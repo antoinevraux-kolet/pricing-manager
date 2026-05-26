@@ -1,0 +1,98 @@
+.wrapper {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.tableScroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.cornerCell {
+  background: #F9FAFB;
+  border-bottom: 2px solid var(--color-border);
+  border-right: 2px solid var(--color-border);
+  width: 160px;
+  min-width: 160px;
+}
+
+.planHeader {
+  background: #F9FAFB;
+  padding: 16px 24px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 2px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.planHeader:last-child {
+  border-right: none;
+}
+
+.row {
+  transition: background 0.1s ease;
+}
+
+.row:hover .countryCell,
+.row:hover .priceCell {
+  background: var(--color-cell-hover);
+}
+
+.row:not(:last-child) .countryCell,
+.row:not(:last-child) .priceCell {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.countryCell {
+  padding: 18px 24px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text);
+  border-right: 2px solid var(--color-border);
+  white-space: nowrap;
+  background: var(--color-surface);
+  transition: background 0.1s ease;
+}
+
+.priceCell {
+  padding: 18px 24px;
+  text-align: center;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  transition: background 0.1s ease;
+}
+
+.priceCell:last-child {
+  border-right: none;
+}
+
+.price {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text);
+  letter-spacing: -0.2px;
+}
+
+.currency {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.empty {
+  color: var(--color-border);
+  font-size: 16px;
+}
