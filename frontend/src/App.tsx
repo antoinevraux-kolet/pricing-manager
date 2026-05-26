@@ -14,6 +14,7 @@ export interface CellMetrics {
   grossMarginPct: number;
   consumptionRate: number;
   projectedConsumptionRate: number | null;
+  competitorMinPrice: number | null;
 }
 
 export interface PricingData {

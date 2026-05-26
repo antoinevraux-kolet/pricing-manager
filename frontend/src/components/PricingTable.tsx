@@ -384,6 +384,13 @@ export default function PricingTable({ data }: Props) {
                           </td>
                           <td key={`${gb}-avg`} className={styles.metricCell}>
                             {fmt(cell.avgPrice)} <span className={styles.currency}>€</span>
+                            {cell.competitorMinPrice !== null ? (
+                              <div className={cell.competitorMinPrice < cell.avgPrice ? styles.competitorCheaper : styles.competitorPricier}>
+                                vs {fmt(cell.competitorMinPrice)} €
+                              </div>
+                            ) : (
+                              <div className={styles.competitorNone}>vs — €</div>
+                            )}
                           </td>
                           <td key={`${gb}-rev`} className={styles.metricCell}>
                             {fmt(cell.revenue)} <span className={styles.currency}>€</span>

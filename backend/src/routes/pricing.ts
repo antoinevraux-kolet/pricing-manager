@@ -45,6 +45,7 @@ interface BQRow {
   gross_margin_eur: number;
   gross_margin_pct: number;
   consumption_rate: number;
+  competitor_min_price_eur: number | null;
 }
 
 export interface CellMetrics {
@@ -59,6 +60,7 @@ export interface CellMetrics {
   grossMarginPct: number;
   consumptionRate: number;
   projectedConsumptionRate: number | null;
+  competitorMinPrice: number | null;
 }
 
 export interface PricingData {
@@ -98,7 +100,8 @@ pricingRouter.get('/', async (req, res) => {
     const query = `
       SELECT zone_code, data_allowance_gb, count_orders, catalog_price_revenue_eur,
              gross_revenue_ttc_eur, net_revenue_ht_eur, net_revenue_after_fees_eur,
-             network_cost_eur, gross_margin_eur, gross_margin_pct, consumption_rate
+             network_cost_eur, gross_margin_eur, gross_margin_pct, consumption_rate,
+             competitor_min_price_eur
       FROM \`${process.env.BIGQUERY_PROJECT_ID}.${DATASET}.mart_pricing_margin\`
       WHERE week_start = '${weekStart}'
         AND customer_segment = 'B2C'
@@ -164,6 +167,7 @@ pricingRouter.get('/', async (req, res) => {
             projectedConsumptionRate: projConsEntries.find(
               (r) => r.zone_code === zone && String(r.data_allowance_gb) === allowance
             )?.avg_consumption_rate ?? null,
+            competitorMinPrice: match.competitor_min_price_eur ?? null,
           };
         } else {
           values[zone][allowance] = null;
