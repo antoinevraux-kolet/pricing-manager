@@ -207,7 +207,8 @@ interface Props {
   data: PricingData;
 }
 
-function fmt(value: number): string {
+function fmt(value: number | null | undefined): string {
+  if (value == null) return '—';
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -378,30 +379,30 @@ export default function PricingTable({ data }: Props) {
                     {allowances.map((gb, i) => {
                       const cell = values[zone]?.[gb];
                       return cell ? (
-                        <>
-                          <td key={`${gb}-orders`} className={`${styles.metricCell} ${i > 0 ? styles.metricCellFirst : ''}`}>
+                        <Fragment key={`${zone}-${gb}`}>
+                          <td className={`${styles.metricCell} ${i > 0 ? styles.metricCellFirst : ''}`}>
                             {cell.orders.toLocaleString('en-US')}
                           </td>
-                          <td key={`${gb}-avg`} className={styles.metricCell}>
+                          <td className={styles.metricCell}>
                             {fmt(cell.avgPrice)} <span className={styles.currency}>€</span>
                             {cell.competitorMinPrice !== null ? (
-                              <div className={cell.competitorMinPrice < cell.avgPrice ? styles.competitorCheaper : styles.competitorPricier}>
+                              <div className={cell.competitorMinPrice < (cell.avgPrice ?? 0) ? styles.competitorCheaper : styles.competitorPricier}>
                                 vs {fmt(cell.competitorMinPrice)} €
                               </div>
                             ) : (
                               <div className={styles.competitorNone}>vs — €</div>
                             )}
                           </td>
-                          <td key={`${gb}-rev`} className={styles.metricCell}>
+                          <td className={styles.metricCell}>
                             {fmt(cell.revenue)} <span className={styles.currency}>€</span>
                           </td>
-                        </>
+                        </Fragment>
                       ) : (
-                        <>
-                          <td key={`${gb}-orders`} className={`${styles.metricCell} ${i > 0 ? styles.metricCellFirst : ''}`}><span className={styles.empty}>—</span></td>
-                          <td key={`${gb}-avg`}    className={styles.metricCell}><span className={styles.empty}>—</span></td>
-                          <td key={`${gb}-rev`}    className={styles.metricCell}><span className={styles.empty}>—</span></td>
-                        </>
+                        <Fragment key={`${zone}-${gb}-empty`}>
+                          <td className={`${styles.metricCell} ${i > 0 ? styles.metricCellFirst : ''}`}><span className={styles.empty}>—</span></td>
+                          <td className={styles.metricCell}><span className={styles.empty}>—</span></td>
+                          <td className={styles.metricCell}><span className={styles.empty}>—</span></td>
+                        </Fragment>
                       );
                     })}
                   </tr>

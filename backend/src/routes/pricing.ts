@@ -11,14 +11,11 @@ const bigquery = new BigQuery({
 
 const DATASET = process.env.BIGQUERY_DATASET;
 
-function getThisMonday(): string {
-  const today = new Date();
-  const day = today.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(today);
-  monday.setUTCDate(today.getUTCDate() + diff);
-  return monday.toISOString().split('T')[0];
+function getToday(): string {
+  return new Date().toISOString().split('T')[0];
 }
+
+const r2 = (v: number | null) => v == null ? null : Math.round(v * 100) / 100;
 
 function subtractDays(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00:00Z');
@@ -26,22 +23,15 @@ function subtractDays(dateStr: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
-function toDateString(value: unknown): string {
-  if (value && typeof value === 'object' && 'value' in value) {
-    return String((value as { value: string }).value);
-  }
-  return String(value);
-}
-
 interface BQRow {
   zone_code: string;
   data_allowance_gb: number;
-  count_orders: number;
-  catalog_price_revenue_eur: number;
+  n_paid_plans: number;
+  list_price_eur: number;
   gross_revenue_ttc_eur: number;
   net_revenue_ht_eur: number;
   net_revenue_after_fees_eur: number;
-  network_cost_eur: number;
+  network_cost_eur_paid_plans: number;
   gross_margin_eur: number;
   gross_margin_pct: number;
   consumption_rate: number;
@@ -69,63 +59,54 @@ export interface PricingData {
   values: Record<string, Record<string, CellMetrics | null>>;
   zoneCosts: Record<string, number | null>;
   costDateRange: { from: string; to: string };
-  weekStart: string;
 }
 
 export const pricingRouter = Router();
 
-pricingRouter.get('/weeks', async (_req, res) => {
-  try {
-    const query = `
-      SELECT DISTINCT week_start
-      FROM \`${process.env.BIGQUERY_PROJECT_ID}.${DATASET}.mart_pricing_margin\`
-      WHERE customer_segment = 'B2C'
-      ORDER BY week_start DESC
-    `;
-    const [rows] = await bigquery.query(query);
-    const weeks = (rows as { week_start: unknown }[]).map((r) =>
-      toDateString(r.week_start)
-    );
-    res.json(weeks);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch weeks' });
-  }
-});
-
 pricingRouter.get('/', async (req, res) => {
   try {
-    const weekStart = typeof req.query.week === 'string' ? req.query.week : getThisMonday();
+    const dateTo   = typeof req.query.to   === 'string' ? req.query.to   : getToday();
+    const dateFrom = typeof req.query.from === 'string' ? req.query.from : subtractDays(dateTo, 7);
 
     const query = `
-      SELECT zone_code, data_allowance_gb, count_orders, catalog_price_revenue_eur,
-             gross_revenue_ttc_eur, net_revenue_ht_eur, net_revenue_after_fees_eur,
-             network_cost_eur, gross_margin_eur, gross_margin_pct, consumption_rate,
-             competitor_min_price_eur
+      SELECT
+        zone_code,
+        data_allowance_gb,
+        SUM(n_paid_plans)                                                        AS n_paid_plans,
+        SAFE_DIVIDE(SUM(list_price_eur * n_paid_plans), SUM(n_paid_plans))        AS list_price_eur,
+        SUM(gross_revenue_ttc_eur)                                               AS gross_revenue_ttc_eur,
+        SUM(net_revenue_ht_eur)                                                  AS net_revenue_ht_eur,
+        SUM(net_revenue_after_fees_eur)                                          AS net_revenue_after_fees_eur,
+        SUM(network_cost_eur_paid_plans)                                                    AS network_cost_eur_paid_plans,
+        SUM(gross_margin_eur)                                                    AS gross_margin_eur,
+        SAFE_DIVIDE(SUM(gross_margin_eur), SUM(net_revenue_ht_eur))              AS gross_margin_pct,
+        SAFE_DIVIDE(SUM(consumed_data_gb_paid_plans), SUM(provisioned_data_gb_paid_plans)) AS consumption_rate,
+        SAFE_DIVIDE(SUM(competitor_min_price_eur * n_paid_plans), SUM(n_paid_plans)) AS competitor_min_price_eur
       FROM \`${process.env.BIGQUERY_PROJECT_ID}.${DATASET}.mart_pricing_margin\`
-      WHERE week_start = '${weekStart}'
+      WHERE plan_purchase_date BETWEEN '${dateFrom}' AND '${dateTo}'
         AND customer_segment = 'B2C'
         AND data_allowance_gb IS NOT NULL
+      GROUP BY zone_code, data_allowance_gb
       ORDER BY zone_code, data_allowance_gb
     `;
 
-    const costFrom = subtractDays(weekStart, 90);
-    const costTo   = subtractDays(weekStart, 35);
+    const costFrom = subtractDays(dateFrom, 90);
+    const costTo   = subtractDays(dateFrom, 35);
 
     const costQuery = `
       SELECT zone_code,
-             SAFE_DIVIDE(SUM(network_cost_eur), SUM(consumed_data_gb)) AS avg_cost_per_gb
+             SAFE_DIVIDE(SUM(network_cost_eur_paid_plans), SUM(consumed_data_gb)) AS avg_cost_per_gb
       FROM \`${process.env.BIGQUERY_PROJECT_ID}.${DATASET}.mart_pricing_margin\`
-      WHERE week_start BETWEEN '${costFrom}' AND '${costTo}'
+      WHERE plan_purchase_date BETWEEN '${costFrom}' AND '${costTo}'
         AND customer_segment = 'B2C'
       GROUP BY zone_code
     `;
 
     const projectedConsumptionQuery = `
       SELECT zone_code, data_allowance_gb,
-             AVG(consumption_rate) AS avg_consumption_rate
+             SAFE_DIVIDE(SUM(consumed_data_gb_paid_plans), SUM(provisioned_data_gb_paid_plans)) AS avg_consumption_rate
       FROM \`${process.env.BIGQUERY_PROJECT_ID}.${DATASET}.mart_pricing_margin\`
-      WHERE week_start BETWEEN '${costFrom}' AND '${costTo}'
+      WHERE plan_purchase_date BETWEEN '${costFrom}' AND '${costTo}'
         AND customer_segment = 'B2C'
         AND data_allowance_gb IS NOT NULL
       GROUP BY zone_code, data_allowance_gb
@@ -154,20 +135,20 @@ pricingRouter.get('/', async (req, res) => {
         );
         if (match) {
           values[zone][allowance] = {
-            orders: match.count_orders,
-            avgPrice: match.count_orders > 0 ? match.catalog_price_revenue_eur / match.count_orders : 0,
-            revenue: match.catalog_price_revenue_eur,
-            grossRevenueTtc: match.gross_revenue_ttc_eur,
-            netRevenueHt: match.net_revenue_ht_eur,
-            netRevenueAfterFees: match.net_revenue_after_fees_eur,
-            networkCost: match.network_cost_eur,
-            grossMargin: match.gross_margin_eur,
+            orders: match.n_paid_plans,
+            avgPrice: r2(match.list_price_eur) ?? 0,
+            revenue: r2((match.list_price_eur ?? 0) * match.n_paid_plans) ?? 0,
+            grossRevenueTtc: r2(match.gross_revenue_ttc_eur) ?? 0,
+            netRevenueHt: r2(match.net_revenue_ht_eur) ?? 0,
+            netRevenueAfterFees: r2(match.net_revenue_after_fees_eur) ?? 0,
+            networkCost: r2(match.network_cost_eur_paid_plans) ?? 0,
+            grossMargin: r2(match.gross_margin_eur) ?? 0,
             grossMarginPct: match.gross_margin_pct,
             consumptionRate: match.consumption_rate,
             projectedConsumptionRate: projConsEntries.find(
               (r) => r.zone_code === zone && String(r.data_allowance_gb) === allowance
             )?.avg_consumption_rate ?? null,
-            competitorMinPrice: match.competitor_min_price_eur ?? null,
+            competitorMinPrice: r2(match.competitor_min_price_eur ?? null),
           };
         } else {
           values[zone][allowance] = null;
@@ -178,10 +159,10 @@ pricingRouter.get('/', async (req, res) => {
     const zoneCosts: Record<string, number | null> = {};
     for (const zone of zones) {
       const match = costEntries.find((r) => r.zone_code === zone);
-      zoneCosts[zone] = match ? match.avg_cost_per_gb : null;
+      zoneCosts[zone] = match ? r2(match.avg_cost_per_gb) : null;
     }
 
-    const data: PricingData = { zones, allowances, values, zoneCosts, costDateRange: { from: costFrom, to: costTo }, weekStart };
+    const data: PricingData = { zones, allowances, values, zoneCosts, costDateRange: { from: costFrom, to: costTo } };
     res.json(data);
   } catch (err) {
     console.error(err);

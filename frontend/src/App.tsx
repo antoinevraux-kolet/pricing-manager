@@ -23,44 +23,34 @@ export interface PricingData {
   values: Record<string, Record<string, CellMetrics | null>>;
   zoneCosts: Record<string, number | null>;
   costDateRange: { from: string; to: string };
-  weekStart: string;
 }
 
-function formatWeekLabel(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-');
-  return `Week of ${day}/${month}/${year}`;
+function getToday(): string {
+  return new Date().toISOString().split('T')[0];
 }
 
-function getThisMonday(): string {
-  const today = new Date();
-  const day = today.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(today);
-  monday.setUTCDate(today.getUTCDate() + diff);
-  return monday.toISOString().split('T')[0];
+function subtractDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().split('T')[0];
 }
 
 export default function App() {
-  const [weeks, setWeeks] = useState<string[]>([]);
-  const [selectedWeek, setSelectedWeek] = useState<string>(getThisMonday());
+  const today = getToday();
+  const defaultFrom = subtractDays(today, 7);
+
+  const [pendingFrom, setPendingFrom] = useState<string>(defaultFrom);
+  const [pendingTo, setPendingTo] = useState<string>(today);
+  const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>({ from: defaultFrom, to: today });
+
   const [data, setData] = useState<PricingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/pricing/weeks')
-      .then((res) => res.json())
-      .then((w: string[]) => {
-        setWeeks(w);
-        if (w.length > 0) setSelectedWeek(w[0]);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`/api/pricing?week=${selectedWeek}`)
+    fetch(`/api/pricing?from=${appliedRange.from}&to=${appliedRange.to}`)
       .then((res) => {
         if (!res.ok) throw new Error('Network error');
         return res.json();
@@ -68,7 +58,7 @@ export default function App() {
       .then((json: PricingData) => setData(json))
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [selectedWeek]);
+  }, [appliedRange.from, appliedRange.to]);
 
   return (
     <div className={styles.layout}>
@@ -84,25 +74,32 @@ export default function App() {
 
       <main className={styles.main}>
         <div className={styles.toolbar}>
-          <label className={styles.label} htmlFor="week-select">
-            Week
-          </label>
-          <select
-            id="week-select"
-            className={styles.select}
-            value={selectedWeek}
-            onChange={(e) => setSelectedWeek(e.target.value)}
+          <label className={styles.label} htmlFor="date-from">From</label>
+          <input
+            id="date-from"
+            type="date"
+            className={styles.dateInput}
+            value={pendingFrom}
+            max={pendingTo}
+            onChange={(e) => setPendingFrom(e.target.value)}
+          />
+          <label className={styles.label} htmlFor="date-to">To</label>
+          <input
+            id="date-to"
+            type="date"
+            className={styles.dateInput}
+            value={pendingTo}
+            min={pendingFrom}
+            max={today}
+            onChange={(e) => setPendingTo(e.target.value)}
+          />
+          <button
+            className={styles.applyBtn}
+            onClick={() => setAppliedRange({ from: pendingFrom, to: pendingTo })}
+            disabled={!pendingFrom || !pendingTo || pendingFrom > pendingTo}
           >
-            {weeks.length === 0 ? (
-              <option value={selectedWeek}>{formatWeekLabel(selectedWeek)}</option>
-            ) : (
-              weeks.map((w) => (
-                <option key={w} value={w}>
-                  {formatWeekLabel(w)}
-                </option>
-              ))
-            )}
-          </select>
+            Apply
+          </button>
         </div>
 
         {loading && <div className={styles.state}>Loading…</div>}
