@@ -349,11 +349,11 @@ export default function PricingTable({ data }: Props) {
             </tr>
             <tr>
               {allowances.map((gb, i) => (
-                <>
-                  <th key={`${gb}-orders`} className={`${styles.metricHeader} ${i > 0 ? styles.metricHeaderFirst : ''}`}>Orders</th>
-                  <th key={`${gb}-avg`}    className={styles.metricHeader}>Catalog Price</th>
-                  <th key={`${gb}-rev`}    className={styles.metricHeader}>Revenue</th>
-                </>
+                <Fragment key={gb}>
+                  <th className={`${styles.metricHeader} ${i > 0 ? styles.metricHeaderFirst : ''}`}>Orders</th>
+                  <th className={styles.metricHeader}>Catalog Price</th>
+                  <th className={styles.metricHeader}>Revenue</th>
+                </Fragment>
               ))}
             </tr>
           </thead>
