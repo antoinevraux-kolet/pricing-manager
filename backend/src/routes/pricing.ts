@@ -503,3 +503,69 @@ pricingRouter.get('/comparison2', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch comparison data' });
   }
 });
+
+export interface HistoricalMarginRow {
+  zoneCode: string;
+  nDataPlans: number;
+  nOrders: number;
+  netRevenueHt: number;
+  totalCost: number;
+  paymentFees: number;
+  grossMargin: number | null;
+  gbAllowed: number;
+  gbConsumed: number;
+}
+
+export interface HistoricalMarginData {
+  rows: HistoricalMarginRow[];
+  startDate: string;
+  endDate: string;
+}
+
+pricingRouter.get('/historical-margins', async (req, res) => {
+  try {
+    const startDate = typeof req.query.startDate === 'string' ? req.query.startDate : subtractDays(getToday(), 365);
+    const today = getToday();
+
+    const query = `
+      SELECT
+        plan_zone_name,
+        COUNT(*)                                                              AS n_data_plans,
+        SUM(n_orders)                                                         AS n_orders,
+        SUM(net_revenue_ht_eur)                                               AS net_revenue_ht_eur,
+        SUM(total_cost_eur)                                                   AS total_cost_eur,
+        SUM(payment_fees_eur)                                                 AS payment_fees_eur,
+        SAFE_DIVIDE(
+          SUM(net_revenue_ht_eur) - SUM(total_cost_eur) - SUM(payment_fees_eur),
+          SUM(net_revenue_ht_eur)
+        )                                                                     AS gross_margin,
+        SUM(data_limit_bytes)    / 1000000000.0                               AS gb_allowed,
+        SUM(consumed_data_bytes) / 1000000000.0                               AS gb_consumed
+      FROM \`${process.env.BIGQUERY_PROJECT_ID}.${BI_DATASET}.fct_data_plan\`
+      WHERE created_at > '${startDate}'
+        AND expiration_date < '${today}'
+      GROUP BY plan_zone_name
+      ORDER BY net_revenue_ht_eur DESC
+    `;
+
+    const [rows] = await bigquery.query(query);
+
+    const result: HistoricalMarginRow[] = (rows as Record<string, unknown>[]).map(e => ({
+      zoneCode:     String(e.plan_zone_name),
+      nDataPlans:   Number(e.n_data_plans)  || 0,
+      nOrders:      Number(e.n_orders)      || 0,
+      netRevenueHt: r2(toFloat(e.net_revenue_ht_eur)) ?? 0,
+      totalCost:    r2(toFloat(e.total_cost_eur))     ?? 0,
+      paymentFees:  r2(toFloat(e.payment_fees_eur))   ?? 0,
+      grossMargin:  toFloat(e.gross_margin),
+      gbAllowed:    r2(toFloat(e.gb_allowed))         ?? 0,
+      gbConsumed:   r2(toFloat(e.gb_consumed))        ?? 0,
+    }));
+
+    const data: HistoricalMarginData = { rows: result, startDate, endDate: today };
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch historical margins' });
+  }
+});

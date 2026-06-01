@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import PricingTable from './components/PricingTable';
 import ComparisonTableV0 from './components/ComparisonTableV0';
 import ComparisonTable from './components/ComparisonTable';
+import HistoricalMargins from './components/HistoricalMargins';
 import styles from './App.module.css';
 
 export interface CellMetrics {
@@ -93,6 +94,24 @@ export interface OrderComparisonData {
   afterTo: string;
 }
 
+export interface HistoricalMarginRow {
+  zoneCode: string;
+  nDataPlans: number;
+  nOrders: number;
+  netRevenueHt: number;
+  totalCost: number;
+  paymentFees: number;
+  grossMargin: number | null;
+  gbAllowed: number;
+  gbConsumed: number;
+}
+
+export interface HistoricalMarginData {
+  rows: HistoricalMarginRow[];
+  startDate: string;
+  endDate: string;
+}
+
 function getToday(): string {
   return new Date().toISOString().split('T')[0];
 }
@@ -103,7 +122,7 @@ function subtractDays(dateStr: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
-type View = 'pricing' | 'comparison' | 'comparison2';
+type View = 'pricing' | 'comparison' | 'comparison2' | 'margins';
 
 export default function App() {
   const today = getToday();
@@ -123,15 +142,21 @@ export default function App() {
   const [pendingWeeks, setPendingWeeks] = useState<number>(2);
   const [appliedComparison, setAppliedComparison] = useState<{ refDate: string; weeks: number }>({ refDate: defaultRefDate, weeks: 2 });
 
-  // Before / After v0 (old mart_pricing_margin model)
   const [compData, setCompData] = useState<ComparisonData | null>(null);
   const [compLoading, setCompLoading] = useState(false);
   const [compError, setCompError] = useState<string | null>(null);
 
-  // Before / After (new bi_users_orders model)
   const [comp2Data, setComp2Data] = useState<OrderComparisonData | null>(null);
   const [comp2Loading, setComp2Loading] = useState(false);
   const [comp2Error, setComp2Error] = useState<string | null>(null);
+
+  // ── Historical margins state ──────────────────────────────────────────────
+  const defaultMarginsDate = '2026-01-01';
+  const [pendingMarginsDate, setPendingMarginsDate] = useState<string>(defaultMarginsDate);
+  const [appliedMarginsDate, setAppliedMarginsDate] = useState<string>(defaultMarginsDate);
+  const [marginsData, setMarginsData] = useState<HistoricalMarginData | null>(null);
+  const [marginsLoading, setMarginsLoading] = useState(false);
+  const [marginsError, setMarginsError] = useState<string | null>(null);
 
   // ── Navigation ────────────────────────────────────────────────────────────
   const [view, setView] = useState<View>('comparison2');
@@ -171,6 +196,18 @@ export default function App() {
       .finally(() => setComp2Loading(false));
   }, [view, appliedComparison.refDate, appliedComparison.weeks]);
 
+  // ── Fetch historical margins ──────────────────────────────────────────────
+  useEffect(() => {
+    if (view !== 'margins') return;
+    setMarginsLoading(true);
+    setMarginsError(null);
+    fetch(`/api/pricing/historical-margins?startDate=${appliedMarginsDate}`)
+      .then((res) => { if (!res.ok) throw new Error('Network error'); return res.json(); })
+      .then((json: HistoricalMarginData) => setMarginsData(json))
+      .catch((err: Error) => setMarginsError(err.message))
+      .finally(() => setMarginsLoading(false));
+  }, [view, appliedMarginsDate]);
+
   return (
     <div className={styles.layout}>
       <header className={styles.header}>
@@ -187,6 +224,12 @@ export default function App() {
             >
               Before / After
             </button>
+            <button
+              className={view === 'margins' ? styles.navActive : styles.navBtn}
+              onClick={() => setView('margins')}
+            >
+              Historical Margins
+            </button>
           </nav>
         </div>
       </header>
@@ -196,31 +239,10 @@ export default function App() {
           <>
             <div className={styles.toolbar}>
               <label className={styles.label} htmlFor="date-from">From</label>
-              <input
-                id="date-from"
-                type="date"
-                className={styles.dateInput}
-                value={pendingFrom}
-                max={pendingTo}
-                onChange={(e) => setPendingFrom(e.target.value)}
-              />
+              <input id="date-from" type="date" className={styles.dateInput} value={pendingFrom} max={pendingTo} onChange={(e) => setPendingFrom(e.target.value)} />
               <label className={styles.label} htmlFor="date-to">To</label>
-              <input
-                id="date-to"
-                type="date"
-                className={styles.dateInput}
-                value={pendingTo}
-                min={pendingFrom}
-                max={today}
-                onChange={(e) => setPendingTo(e.target.value)}
-              />
-              <button
-                className={styles.applyBtn}
-                onClick={() => setAppliedRange({ from: pendingFrom, to: pendingTo })}
-                disabled={!pendingFrom || !pendingTo || pendingFrom > pendingTo}
-              >
-                Apply
-              </button>
+              <input id="date-to" type="date" className={styles.dateInput} value={pendingTo} min={pendingFrom} max={today} onChange={(e) => setPendingTo(e.target.value)} />
+              <button className={styles.applyBtn} onClick={() => setAppliedRange({ from: pendingFrom, to: pendingTo })} disabled={!pendingFrom || !pendingTo || pendingFrom > pendingTo}>Apply</button>
             </div>
             {pricingLoading && <div className={styles.state}>Loading…</div>}
             {pricingError && <div className={styles.stateError}>Error: {pricingError}</div>}
@@ -231,32 +253,12 @@ export default function App() {
         {(view === 'comparison' || view === 'comparison2') && (
           <div className={styles.toolbar}>
             <label className={styles.label} htmlFor="ref-date">Reference date</label>
-            <input
-              id="ref-date"
-              type="date"
-              className={styles.dateInput}
-              value={pendingRefDate}
-              max={today}
-              onChange={(e) => setPendingRefDate(e.target.value)}
-            />
+            <input id="ref-date" type="date" className={styles.dateInput} value={pendingRefDate} max={today} onChange={(e) => setPendingRefDate(e.target.value)} />
             <label className={styles.label} htmlFor="weeks-select">Weeks</label>
-            <select
-              id="weeks-select"
-              className={styles.dateInput}
-              value={pendingWeeks}
-              onChange={(e) => setPendingWeeks(Number(e.target.value))}
-            >
-              {[1, 2, 3, 4, 6, 8, 12].map(w => (
-                <option key={w} value={w}>{w} {w === 1 ? 'week' : 'weeks'}</option>
-              ))}
+            <select id="weeks-select" className={styles.dateInput} value={pendingWeeks} onChange={(e) => setPendingWeeks(Number(e.target.value))}>
+              {[1, 2, 3, 4, 6, 8, 12].map(w => <option key={w} value={w}>{w} {w === 1 ? 'week' : 'weeks'}</option>)}
             </select>
-            <button
-              className={styles.applyBtn}
-              onClick={() => setAppliedComparison({ refDate: pendingRefDate, weeks: pendingWeeks })}
-              disabled={!pendingRefDate}
-            >
-              Apply
-            </button>
+            <button className={styles.applyBtn} onClick={() => setAppliedComparison({ refDate: pendingRefDate, weeks: pendingWeeks })} disabled={!pendingRefDate}>Apply</button>
           </div>
         )}
 
@@ -273,6 +275,19 @@ export default function App() {
             {compLoading && <div className={styles.state}>Loading…</div>}
             {compError && <div className={styles.stateError}>Error: {compError}</div>}
             {!compLoading && !compError && compData && <ComparisonTableV0 data={compData} />}
+          </>
+        )}
+
+        {view === 'margins' && (
+          <>
+            <div className={styles.toolbar}>
+              <label className={styles.label} htmlFor="margins-start">Start date of observation</label>
+              <input id="margins-start" type="date" className={styles.dateInput} value={pendingMarginsDate} max={today} onChange={(e) => setPendingMarginsDate(e.target.value)} />
+              <button className={styles.applyBtn} onClick={() => setAppliedMarginsDate(pendingMarginsDate)} disabled={!pendingMarginsDate}>Apply</button>
+            </div>
+            {marginsLoading && <div className={styles.state}>Loading…</div>}
+            {marginsError && <div className={styles.stateError}>Error: {marginsError}</div>}
+            {!marginsLoading && !marginsError && marginsData && <HistoricalMargins data={marginsData} />}
           </>
         )}
       </main>
