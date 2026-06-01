@@ -386,12 +386,15 @@
   white-space: nowrap;
 }
 .priceHdr    { background: #F9FAFB; color: #374151; border-left-color: #D1D5DB; }
+.priceUsdHdr { background: #FAFAF5; color: #78350F; border-left-color: #FDE68A; }
 .ordersHdr   { background: #EFF6FF; color: #1D4ED8; border-left-color: #BFDBFE; }
 .revHdr      { background: #F0FDF4; color: #15803D; border-left-color: #BBF7D0; }
 .costHdr     { background: #FFF7ED; color: #C2410C; border-left-color: #FED7AA; }
 .marginHdr   { background: #F5F3FF; color: #6D28D9; border-left-color: #DDD6FE; }
 .grossRevHdr { background: #F0FDF4; color: #15803D; border-left-color: #BBF7D0; }
 .netRevHdr   { background: #F0FDFA; color: #0F766E; border-left-color: #99F6E4; }
+.grossAovHdr { background: #FDF4FF; color: #7E22CE; border-left-color: #E9D5FF; }
+.netAovHdr   { background: #F0F9FF; color: #0369A1; border-left-color: #BAE6FD; }
 
 .subBefore,
 .subAfter,
@@ -472,21 +475,54 @@
   border-left: 1px solid var(--color-border);
 }
 
-/* Group separators on data rows */
+/* Group separators — new table (class-based, works regardless of collapsed state) */
+.groupStartCell.priceHdr    { border-left: 2px solid #D1D5DB; }
+.groupStartCell.priceUsdHdr { border-left: 2px solid #FDE68A; }
+.groupStartCell.ordersHdr   { border-left: 2px solid #BFDBFE; }
+.groupStartCell.grossRevHdr { border-left: 2px solid #BBF7D0; }
+.groupStartCell.netRevHdr   { border-left: 2px solid #99F6E4; }
+.groupStartCell.grossAovHdr { border-left: 2px solid #E9D5FF; }
+.groupStartCell.netAovHdr   { border-left: 2px solid #BAE6FD; }
+
+/* Group separators — V0 table (nth-child, fixed layout) */
 .planRow td.priceHdr:nth-child(2),
-.totalRow td.priceHdr:nth-child(2)      { border-left: 2px solid #D1D5DB; }
+.totalRow td.priceHdr:nth-child(2)     { border-left: 2px solid #D1D5DB; }
 .planRow td.ordersHdr:nth-child(5),
-.totalRow td.ordersHdr:nth-child(5)     { border-left: 2px solid #BFDBFE; }
+.totalRow td.ordersHdr:nth-child(5)    { border-left: 2px solid #BFDBFE; }
 .planRow td.revHdr:nth-child(8),
-.totalRow td.revHdr:nth-child(8)        { border-left: 2px solid #BBF7D0; }
-.planRow td.grossRevHdr:nth-child(8),
-.totalRow td.grossRevHdr:nth-child(8)   { border-left: 2px solid #BBF7D0; }
+.totalRow td.revHdr:nth-child(8)       { border-left: 2px solid #BBF7D0; }
 .planRow td.costHdr:nth-child(11),
-.totalRow td.costHdr:nth-child(11)      { border-left: 2px solid #FED7AA; }
-.planRow td.netRevHdr:nth-child(11),
-.totalRow td.netRevHdr:nth-child(11)    { border-left: 2px solid #99F6E4; }
+.totalRow td.costHdr:nth-child(11)     { border-left: 2px solid #FED7AA; }
 .planRow td.marginHdr:nth-child(14),
-.totalRow td.marginHdr:nth-child(14)    { border-left: 2px solid #DDD6FE; }
+.totalRow td.marginHdr:nth-child(14)   { border-left: 2px solid #DDD6FE; }
+
+/* Collapsible group headers */
+.collapsible { cursor: pointer; user-select: none; transition: opacity 0.1s; }
+.collapsible:hover { opacity: 0.8; }
+.collapseArrow {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 9px;
+  opacity: 0.6;
+  vertical-align: middle;
+}
+.groupHeaderCollapsed {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  padding: 10px 4px;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  text-align: center;
+}
+
+/* Collapsed column placeholder */
+.collapsedCell {
+  width: 14px;
+  min-width: 14px;
+  padding: 0;
+  border-left: 1px solid var(--color-border);
+}
 
 /* ── Column info tooltip ─────────────────────────────────────────────────── */
 .colInfoWrap {

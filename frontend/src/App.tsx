@@ -69,16 +69,13 @@ export interface ComparisonData {
   projAssumptions: ProjectionAssumption[];
 }
 
-export interface CurrencyRate {
-  rate: number;
-}
-
 export interface OrderComparisonRow {
   zoneCode: string;
   dataGb: string;
-  rate: number;
-  priceBefore: number | null;
-  priceAfter: number | null;
+  priceBeforeEur: number | null;
+  priceBeforeUsd: number | null;
+  priceAfterEur: number | null;
+  priceAfterUsd: number | null;
   ordersBefore: number;
   ordersAfter: number;
   grossRevBefore: number;
@@ -94,7 +91,6 @@ export interface OrderComparisonData {
   beforeTo: string;
   afterFrom: string;
   afterTo: string;
-  currencies: CurrencyRate[];
 }
 
 function getToday(): string {
@@ -122,7 +118,7 @@ export default function App() {
   const [pricingError, setPricingError] = useState<string | null>(null);
 
   // ── Comparison view state (shared date controls) ──────────────────────────
-  const defaultRefDate = subtractDays(today, 14);
+  const defaultRefDate = '2026-05-14';
   const [pendingRefDate, setPendingRefDate] = useState<string>(defaultRefDate);
   const [pendingWeeks, setPendingWeeks] = useState<number>(2);
   const [appliedComparison, setAppliedComparison] = useState<{ refDate: string; weeks: number }>({ refDate: defaultRefDate, weeks: 2 });

@@ -3,6 +3,8 @@ import { zoneLabel, zoneName, fmt, pctDelta, fmtDate, DeltaBadge } from './Compa
 import type { OrderComparisonData, OrderComparisonRow } from '../App';
 import styles from './ComparisonTable.module.css';
 
+type GroupKey = 'priceEur' | 'priceUsd' | 'orders' | 'grossRev' | 'netRev' | 'grossAov' | 'netAov';
+
 function ColInfo({ text }: { text: string }) {
   return (
     <span className={styles.colInfoWrap}>
@@ -20,11 +22,19 @@ export default function ComparisonTable({ data }: Props) {
   const allZones = [...new Set(rows.map(r => r.zoneCode))];
   const allGbs   = [...new Set(rows.map(r => r.dataGb))].sort((a, b) => Number(a) - Number(b));
 
-  const [search,     setSearch]     = useState('');
-  const [filterGb,   setFilterGb]   = useState('all');
-  const [rateFilter, setRateFilter] = useState<number>(1);
+  const [search,    setSearch]    = useState('');
+  const [filterGb,  setFilterGb]  = useState('all');
+  const [collapsed, setCollapsed] = useState<Set<GroupKey>>(new Set(['grossRev', 'grossAov']));
 
-  const sortedRates = [...data.currencies].sort((a, b) => a.rate - b.rate);
+  const toggle = (key: GroupKey) => setCollapsed(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const isOpen = (key: GroupKey) => !collapsed.has(key);
+
+  const KEYS: GroupKey[] = ['priceEur', 'priceUsd', 'orders', 'grossRev', 'grossAov', 'netRev', 'netAov'];
+  const NCOLS = 1 + KEYS.reduce((s, k) => s + (isOpen(k) ? 3 : 1), 0);
 
   const searchLower = search.toLowerCase();
   const matchesSearch = (zone: string) =>
@@ -33,9 +43,7 @@ export default function ComparisonTable({ data }: Props) {
     zoneName(zone).toLowerCase().includes(searchLower);
 
   const filtered = rows.filter(r =>
-    matchesSearch(r.zoneCode) &&
-    (filterGb === 'all' || r.dataGb === filterGb) &&
-    r.rate === rateFilter
+    matchesSearch(r.zoneCode) && (filterGb === 'all' || r.dataGb === filterGb)
   );
 
   const grouped: Record<string, OrderComparisonRow[]> = {};
@@ -52,7 +60,60 @@ export default function ComparisonTable({ data }: Props) {
       return sumB - sumA;
     });
 
-  const NCOLS = 13;
+  // Helper: render 3 cells when open, 1 collapsed placeholder when closed
+  function GroupCells({
+    groupKey, hdrClass, beforeVal, afterVal, fmt: fmtFn, prefix = '', positiveIsGood = true,
+  }: {
+    groupKey: GroupKey;
+    hdrClass: string;
+    beforeVal: number | null;
+    afterVal: number | null;
+    fmt?: (v: number) => string;
+    prefix?: string;
+    positiveIsGood?: boolean;
+  }) {
+    const f = fmtFn ?? ((v: number) => fmt(v));
+    if (!isOpen(groupKey)) {
+      return <td className={`${styles.collapsedCell} ${hdrClass} ${styles.groupStartCell}`} />;
+    }
+    return (
+      <>
+        <td className={`${styles.cell} ${hdrClass} ${styles.groupStartCell}`}>
+          {beforeVal != null ? `${prefix}${f(beforeVal)}` : '—'}
+        </td>
+        <td className={`${styles.cell} ${hdrClass}`}>
+          {afterVal != null ? `${prefix}${f(afterVal)}` : '—'}
+        </td>
+        <td className={`${styles.deltaCell} ${hdrClass}`}>
+          <DeltaBadge delta={pctDelta(beforeVal, afterVal)} positiveIsGood={positiveIsGood} />
+        </td>
+      </>
+    );
+  }
+
+  function GroupHeader({
+    groupKey, hdrClass, label, info,
+  }: { groupKey: GroupKey; hdrClass: string; label: string; info: string }) {
+    const open = isOpen(groupKey);
+    return (
+      <th
+        className={`${styles.groupHeader} ${hdrClass} ${styles.collapsible} ${!open ? styles.groupHeaderCollapsed : ''}`}
+        colSpan={open ? 3 : 1}
+        rowSpan={open ? 1 : 2}
+        onClick={() => toggle(groupKey)}
+      >
+        {open ? (
+          <>
+            {label}
+            <ColInfo text={info} />
+            <span className={styles.collapseArrow}>▾</span>
+          </>
+        ) : (
+          label
+        )}
+      </th>
+    );
+  }
 
   return (
     <div>
@@ -84,26 +145,10 @@ export default function ComparisonTable({ data }: Props) {
               <button className={styles.searchClear} onClick={() => setSearch('')}>✕</button>
             )}
           </div>
-
           <select value={filterGb} onChange={e => setFilterGb(e.target.value)} className={styles.filterSelect}>
             <option value="all">All plans</option>
-            {allGbs.map(gb => (
-              <option key={gb} value={gb}>{gb} GB</option>
-            ))}
+            {allGbs.map(gb => <option key={gb} value={gb}>{gb} GB</option>)}
           </select>
-
-          <select
-            value={rateFilter}
-            onChange={e => setRateFilter(Number(e.target.value))}
-            className={styles.filterSelect}
-          >
-            {sortedRates.map(c => (
-              <option key={c.rate} value={c.rate}>
-                {c.rate === 1 ? 'EUR (×1)' : `×${c.rate}`}
-              </option>
-            ))}
-          </select>
-
           <span className={styles.planCount}>{filtered.length} plans · {sortedZones.length} countries</span>
         </div>
       </div>
@@ -113,47 +158,61 @@ export default function ComparisonTable({ data }: Props) {
           <thead>
             <tr>
               <th className={styles.planHeader} rowSpan={2}>PLAN</th>
-              <th className={`${styles.groupHeader} ${styles.priceHdr}`} colSpan={3}>
-                PRICE
-                <ColInfo text="AVG(order_original_price_amount) — catalog price in order currency" />
-              </th>
-              <th className={`${styles.groupHeader} ${styles.ordersHdr}`} colSpan={3}>
-                ORDERS
-                <ColInfo text="COUNT of paid non-gift orders (is_gift = false)" />
-              </th>
-              <th className={`${styles.groupHeader} ${styles.grossRevHdr}`} colSpan={3}>
-                GROSS REV (EUR)
-                <ColInfo text="SUM(price_euro_cents) / 100 — incl. tax, after discounts & Koins" />
-              </th>
-              <th className={`${styles.groupHeader} ${styles.netRevHdr}`} colSpan={3}>
-                NET REV (EUR)
-                <ColInfo text="SUM(price_euro_cents) / 120 — gross revenue ex. 20% VAT" />
-              </th>
+              <GroupHeader groupKey="priceEur"  hdrClass={styles.priceHdr}    label="PRICE EUR"       info="AVG(order_original_price_amount) — orders with exchange rate = 1" />
+              <GroupHeader groupKey="priceUsd"  hdrClass={styles.priceUsdHdr} label="PRICE USD"       info="AVG(order_original_price_amount) — orders with exchange rate ≠ 1" />
+              <GroupHeader groupKey="orders"    hdrClass={styles.ordersHdr}   label="ORDERS"          info="COUNT of paid non-gift orders (all currencies)" />
+              <GroupHeader groupKey="grossRev"  hdrClass={styles.grossRevHdr} label="GROSS REV (EUR)" info="SUM(price_euro_cents) / 100 — incl. tax, after discounts & Koins" />
+              <GroupHeader groupKey="grossAov" hdrClass={styles.grossAovHdr} label="GROSS AOV (EUR)"  info="Gross Revenue / Orders — average gross order value" />
+              <GroupHeader groupKey="netRev"    hdrClass={styles.netRevHdr}   label="NET REV (EUR)"   info="SUM(price_euro_cents) / 120 — gross revenue ex. 20% VAT" />
+              <GroupHeader groupKey="netAov"   hdrClass={styles.netAovHdr}   label="NET AOV (EUR)"    info="Net Revenue / Orders — average net order value ex. 20% VAT" />
             </tr>
             <tr>
-              <th className={`${styles.subBefore} ${styles.priceHdr}`}>Before</th>
-              <th className={`${styles.subAfter}  ${styles.priceHdr}`}>After</th>
-              <th className={`${styles.subDelta}  ${styles.priceHdr}`}>Δ</th>
-              <th className={`${styles.subBefore} ${styles.ordersHdr}`}>Before</th>
-              <th className={`${styles.subAfter}  ${styles.ordersHdr}`}>After</th>
-              <th className={`${styles.subDelta}  ${styles.ordersHdr}`}>Δ</th>
-              <th className={`${styles.subBefore} ${styles.grossRevHdr}`}>Before</th>
-              <th className={`${styles.subAfter}  ${styles.grossRevHdr}`}>After</th>
-              <th className={`${styles.subDelta}  ${styles.grossRevHdr}`}>Δ</th>
-              <th className={`${styles.subBefore} ${styles.netRevHdr}`}>Before</th>
-              <th className={`${styles.subAfter}  ${styles.netRevHdr}`}>After</th>
-              <th className={`${styles.subDelta}  ${styles.netRevHdr}`}>Δ</th>
+              {isOpen('priceEur') && <>
+                <th className={`${styles.subBefore} ${styles.priceHdr}`}>Before</th>
+                <th className={`${styles.subAfter}  ${styles.priceHdr}`}>After</th>
+                <th className={`${styles.subDelta}  ${styles.priceHdr}`}>Δ</th>
+              </>}
+              {isOpen('priceUsd') && <>
+                <th className={`${styles.subBefore} ${styles.priceUsdHdr}`}>Before</th>
+                <th className={`${styles.subAfter}  ${styles.priceUsdHdr}`}>After</th>
+                <th className={`${styles.subDelta}  ${styles.priceUsdHdr}`}>Δ</th>
+              </>}
+              {isOpen('orders') && <>
+                <th className={`${styles.subBefore} ${styles.ordersHdr}`}>Before</th>
+                <th className={`${styles.subAfter}  ${styles.ordersHdr}`}>After</th>
+                <th className={`${styles.subDelta}  ${styles.ordersHdr}`}>Δ</th>
+              </>}
+              {isOpen('grossRev') && <>
+                <th className={`${styles.subBefore} ${styles.grossRevHdr}`}>Before</th>
+                <th className={`${styles.subAfter}  ${styles.grossRevHdr}`}>After</th>
+                <th className={`${styles.subDelta}  ${styles.grossRevHdr}`}>Δ</th>
+              </>}
+              {isOpen('grossAov') && <>
+                <th className={`${styles.subBefore} ${styles.grossAovHdr}`}>Before</th>
+                <th className={`${styles.subAfter}  ${styles.grossAovHdr}`}>After</th>
+                <th className={`${styles.subDelta}  ${styles.grossAovHdr}`}>Δ</th>
+              </>}
+              {isOpen('netRev') && <>
+                <th className={`${styles.subBefore} ${styles.netRevHdr}`}>Before</th>
+                <th className={`${styles.subAfter}  ${styles.netRevHdr}`}>After</th>
+                <th className={`${styles.subDelta}  ${styles.netRevHdr}`}>Δ</th>
+              </>}
+              {isOpen('netAov') && <>
+                <th className={`${styles.subBefore} ${styles.netAovHdr}`}>Before</th>
+                <th className={`${styles.subAfter}  ${styles.netAovHdr}`}>After</th>
+                <th className={`${styles.subDelta}  ${styles.netAovHdr}`}>Δ</th>
+              </>}
             </tr>
           </thead>
           <tbody>
             {sortedZones.map((zone, rank) => {
               const zoneRows = grouped[zone];
-              const sumOrdersBefore  = zoneRows.reduce((s, r) => s + r.ordersBefore,  0);
-              const sumOrdersAfter   = zoneRows.reduce((s, r) => s + r.ordersAfter,   0);
+              const sumOrdersBefore   = zoneRows.reduce((s, r) => s + r.ordersBefore,   0);
+              const sumOrdersAfter    = zoneRows.reduce((s, r) => s + r.ordersAfter,    0);
               const sumGrossRevBefore = zoneRows.reduce((s, r) => s + r.grossRevBefore, 0);
               const sumGrossRevAfter  = zoneRows.reduce((s, r) => s + r.grossRevAfter,  0);
-              const sumNetRevBefore  = zoneRows.reduce((s, r) => s + r.netRevBefore,  0);
-              const sumNetRevAfter   = zoneRows.reduce((s, r) => s + r.netRevAfter,   0);
+              const sumNetRevBefore   = zoneRows.reduce((s, r) => s + r.netRevBefore,   0);
+              const sumNetRevAfter    = zoneRows.reduce((s, r) => s + r.netRevAfter,    0);
 
               return (
                 <Fragment key={zone}>
@@ -166,63 +225,41 @@ export default function ComparisonTable({ data }: Props) {
                       </span>
                     </td>
                   </tr>
-                  {zoneRows.map(row => (
-                    <tr key={`${zone}-${row.dataGb}-${row.rate}`} className={styles.planRow}>
-                      <td className={styles.planCell}>{row.dataGb} GB</td>
-
-                      <td className={`${styles.cell} ${styles.priceHdr}`}>
-                        {row.priceBefore != null ? fmt(row.priceBefore) : '—'}
-                      </td>
-                      <td className={`${styles.cell} ${styles.priceHdr}`}>
-                        {row.priceAfter != null ? fmt(row.priceAfter) : '—'}
-                      </td>
-                      <td className={`${styles.deltaCell} ${styles.priceHdr}`}>
-                        <DeltaBadge delta={pctDelta(row.priceBefore, row.priceAfter)} />
-                      </td>
-
-                      <td className={`${styles.cell} ${styles.ordersHdr}`}>{row.ordersBefore.toLocaleString('en-US')}</td>
-                      <td className={`${styles.cell} ${styles.ordersHdr}`}>{row.ordersAfter.toLocaleString('en-US')}</td>
-                      <td className={`${styles.deltaCell} ${styles.ordersHdr}`}>
-                        <DeltaBadge delta={pctDelta(row.ordersBefore, row.ordersAfter)} />
-                      </td>
-
-                      <td className={`${styles.cell} ${styles.grossRevHdr}`}>€{fmt(row.grossRevBefore)}</td>
-                      <td className={`${styles.cell} ${styles.grossRevHdr}`}>€{fmt(row.grossRevAfter)}</td>
-                      <td className={`${styles.deltaCell} ${styles.grossRevHdr}`}>
-                        <DeltaBadge delta={pctDelta(row.grossRevBefore, row.grossRevAfter)} />
-                      </td>
-
-                      <td className={`${styles.cell} ${styles.netRevHdr}`}>€{fmt(row.netRevBefore)}</td>
-                      <td className={`${styles.cell} ${styles.netRevHdr}`}>€{fmt(row.netRevAfter)}</td>
-                      <td className={`${styles.deltaCell} ${styles.netRevHdr}`}>
-                        <DeltaBadge delta={pctDelta(row.netRevBefore, row.netRevAfter)} />
-                      </td>
-                    </tr>
-                  ))}
+                  {zoneRows.map(row => {
+                    const grossAovBefore = row.ordersBefore > 0 ? row.grossRevBefore / row.ordersBefore : null;
+                    const grossAovAfter  = row.ordersAfter  > 0 ? row.grossRevAfter  / row.ordersAfter  : null;
+                    const netAovBefore   = row.ordersBefore > 0 ? row.netRevBefore   / row.ordersBefore : null;
+                    const netAovAfter    = row.ordersAfter  > 0 ? row.netRevAfter    / row.ordersAfter  : null;
+                    return (
+                      <tr key={`${zone}-${row.dataGb}`} className={styles.planRow}>
+                        <td className={styles.planCell}>{row.dataGb} GB</td>
+                        <GroupCells groupKey="priceEur"  hdrClass={styles.priceHdr}    beforeVal={row.priceBeforeEur} afterVal={row.priceAfterEur} />
+                        <GroupCells groupKey="priceUsd"  hdrClass={styles.priceUsdHdr} beforeVal={row.priceBeforeUsd} afterVal={row.priceAfterUsd} />
+                        <GroupCells groupKey="orders"    hdrClass={styles.ordersHdr}   beforeVal={row.ordersBefore}  afterVal={row.ordersAfter}   fmt={v => v.toLocaleString('en-US')} />
+                        <GroupCells groupKey="grossRev"  hdrClass={styles.grossRevHdr} beforeVal={row.grossRevBefore} afterVal={row.grossRevAfter} prefix="€" />
+                        <GroupCells groupKey="grossAov"  hdrClass={styles.grossAovHdr} beforeVal={grossAovBefore}    afterVal={grossAovAfter}     prefix="€" />
+                        <GroupCells groupKey="netRev"    hdrClass={styles.netRevHdr}   beforeVal={row.netRevBefore}  afterVal={row.netRevAfter}   prefix="€" />
+                        <GroupCells groupKey="netAov"    hdrClass={styles.netAovHdr}   beforeVal={netAovBefore}      afterVal={netAovAfter}       prefix="€" />
+                      </tr>
+                    );
+                  })}
                   <tr className={styles.totalRow}>
                     <td className={styles.planCell}>Total</td>
-
-                    <td className={`${styles.cell} ${styles.priceHdr}`} />
-                    <td className={`${styles.cell} ${styles.priceHdr}`} />
-                    <td className={`${styles.deltaCell} ${styles.priceHdr}`} />
-
-                    <td className={`${styles.cell} ${styles.ordersHdr}`}>{sumOrdersBefore.toLocaleString('en-US')}</td>
-                    <td className={`${styles.cell} ${styles.ordersHdr}`}>{sumOrdersAfter.toLocaleString('en-US')}</td>
-                    <td className={`${styles.deltaCell} ${styles.ordersHdr}`}>
-                      <DeltaBadge delta={pctDelta(sumOrdersBefore, sumOrdersAfter)} />
-                    </td>
-
-                    <td className={`${styles.cell} ${styles.grossRevHdr}`}>€{fmt(sumGrossRevBefore)}</td>
-                    <td className={`${styles.cell} ${styles.grossRevHdr}`}>€{fmt(sumGrossRevAfter)}</td>
-                    <td className={`${styles.deltaCell} ${styles.grossRevHdr}`}>
-                      <DeltaBadge delta={pctDelta(sumGrossRevBefore, sumGrossRevAfter)} />
-                    </td>
-
-                    <td className={`${styles.cell} ${styles.netRevHdr}`}>€{fmt(sumNetRevBefore)}</td>
-                    <td className={`${styles.cell} ${styles.netRevHdr}`}>€{fmt(sumNetRevAfter)}</td>
-                    <td className={`${styles.deltaCell} ${styles.netRevHdr}`}>
-                      <DeltaBadge delta={pctDelta(sumNetRevBefore, sumNetRevAfter)} />
-                    </td>
+                    {isOpen('priceEur') ? (
+                      <><td className={`${styles.cell} ${styles.priceHdr} ${styles.groupStartCell}`} /><td className={`${styles.cell} ${styles.priceHdr}`} /><td className={`${styles.deltaCell} ${styles.priceHdr}`} /></>
+                    ) : (
+                      <td className={`${styles.collapsedCell} ${styles.priceHdr} ${styles.groupStartCell}`} />
+                    )}
+                    {isOpen('priceUsd') ? (
+                      <><td className={`${styles.cell} ${styles.priceUsdHdr} ${styles.groupStartCell}`} /><td className={`${styles.cell} ${styles.priceUsdHdr}`} /><td className={`${styles.deltaCell} ${styles.priceUsdHdr}`} /></>
+                    ) : (
+                      <td className={`${styles.collapsedCell} ${styles.priceUsdHdr} ${styles.groupStartCell}`} />
+                    )}
+                    <GroupCells groupKey="orders"   hdrClass={styles.ordersHdr}   beforeVal={sumOrdersBefore}   afterVal={sumOrdersAfter}   fmt={v => v.toLocaleString('en-US')} />
+                    <GroupCells groupKey="grossRev" hdrClass={styles.grossRevHdr} beforeVal={sumGrossRevBefore} afterVal={sumGrossRevAfter}  prefix="€" />
+                    <GroupCells groupKey="grossAov" hdrClass={styles.grossAovHdr} beforeVal={sumOrdersBefore > 0 ? sumGrossRevBefore / sumOrdersBefore : null} afterVal={sumOrdersAfter > 0 ? sumGrossRevAfter / sumOrdersAfter : null} prefix="€" />
+                    <GroupCells groupKey="netRev"   hdrClass={styles.netRevHdr}   beforeVal={sumNetRevBefore}   afterVal={sumNetRevAfter}    prefix="€" />
+                    <GroupCells groupKey="netAov"   hdrClass={styles.netAovHdr}   beforeVal={sumOrdersBefore > 0 ? sumNetRevBefore   / sumOrdersBefore : null} afterVal={sumOrdersAfter > 0 ? sumNetRevAfter   / sumOrdersAfter  : null} prefix="€" />
                   </tr>
                 </Fragment>
               );

@@ -393,9 +393,10 @@ pricingRouter.get('/comparison', async (req, res) => {
 interface OrderBQRow {
   order_zone: string;
   data_gb: number;
-  rate: number;
-  price_before: number | null;
-  price_after: number | null;
+  price_before_eur: number | null;
+  price_before_usd: number | null;
+  price_after_eur: number | null;
+  price_after_usd: number | null;
   orders_before: number;
   orders_after: number;
   gross_rev_before: number;
@@ -407,19 +408,16 @@ interface OrderBQRow {
 export interface OrderComparisonRow {
   zoneCode: string;
   dataGb: string;
-  rate: number;
-  priceBefore: number | null;
-  priceAfter: number | null;
+  priceBeforeEur: number | null;
+  priceBeforeUsd: number | null;
+  priceAfterEur: number | null;
+  priceAfterUsd: number | null;
   ordersBefore: number;
   ordersAfter: number;
   grossRevBefore: number;
   grossRevAfter: number;
   netRevBefore: number;
   netRevAfter: number;
-}
-
-export interface CurrencyRate {
-  rate: number;
 }
 
 export interface OrderComparisonData {
@@ -429,7 +427,6 @@ export interface OrderComparisonData {
   beforeTo: string;
   afterFrom: string;
   afterTo: string;
-  currencies: CurrencyRate[];
 }
 
 pricingRouter.get('/comparison2', async (req, res) => {
@@ -448,11 +445,18 @@ pricingRouter.get('/comparison2', async (req, res) => {
       SELECT
         order_zone,
         CAST(ROUND(data_bytes / 1000000000.0) AS INT64) AS data_gb,
-        ROUND(order_currency_exchange_rate, 2)           AS rate,
-        AVG(CASE WHEN DATE(created_at) BETWEEN '${beforeFrom}' AND '${beforeTo}'
-          THEN order_original_price_amount END)          AS price_before,
-        AVG(CASE WHEN DATE(created_at) BETWEEN '${afterFrom}' AND '${afterTo}'
-          THEN order_original_price_amount END)          AS price_after,
+        AVG(CASE WHEN ROUND(order_currency_exchange_rate, 2) = 1.0
+                  AND DATE(created_at) BETWEEN '${beforeFrom}' AND '${beforeTo}'
+          THEN order_original_price_amount END)          AS price_before_eur,
+        AVG(CASE WHEN ROUND(order_currency_exchange_rate, 2) != 1.0
+                  AND DATE(created_at) BETWEEN '${beforeFrom}' AND '${beforeTo}'
+          THEN order_original_price_amount END)          AS price_before_usd,
+        AVG(CASE WHEN ROUND(order_currency_exchange_rate, 2) = 1.0
+                  AND DATE(created_at) BETWEEN '${afterFrom}' AND '${afterTo}'
+          THEN order_original_price_amount END)          AS price_after_eur,
+        AVG(CASE WHEN ROUND(order_currency_exchange_rate, 2) != 1.0
+                  AND DATE(created_at) BETWEEN '${afterFrom}' AND '${afterTo}'
+          THEN order_original_price_amount END)          AS price_after_usd,
         COUNTIF(DATE(created_at) BETWEEN '${beforeFrom}' AND '${beforeTo}') AS orders_before,
         COUNTIF(DATE(created_at) BETWEEN '${afterFrom}' AND '${afterTo}')   AS orders_after,
         SUM(CASE WHEN DATE(created_at) BETWEEN '${beforeFrom}' AND '${beforeTo}'
@@ -469,52 +473,30 @@ pricingRouter.get('/comparison2', async (req, res) => {
         AND data_bytes IS NOT NULL
         AND original_price_euro_cents > 0
         AND order_currency_exchange_rate IS NOT NULL
-      GROUP BY order_zone, data_gb, rate
+      GROUP BY order_zone, data_gb
       HAVING data_gb > 0
-      ORDER BY order_zone, data_gb, rate
+      ORDER BY order_zone, data_gb
     `;
 
-    const currencyQuery = `
-      SELECT ROUND(order_currency_exchange_rate, 2) AS rate
-      FROM \`${process.env.BIGQUERY_PROJECT_ID}.${BI_DATASET}.bi_users_orders\`
-      WHERE DATE(created_at) BETWEEN '${beforeFrom}' AND '${afterTo}'
-        AND is_gift = FALSE
-        AND original_price_euro_cents > 0
-        AND order_currency_exchange_rate IS NOT NULL
-      GROUP BY rate
-      HAVING rate > 0
-      ORDER BY rate
-    `;
-
-    const [[rows], [currRows]] = await Promise.all([
-      bigquery.query(query),
-      bigquery.query(currencyQuery),
-    ]);
-    const entries    = rows as OrderBQRow[];
-    const currEntries = currRows as { rate: number }[];
+    const [rows] = await bigquery.query(query);
+    const entries = rows as OrderBQRow[];
 
     const result: OrderComparisonRow[] = entries.map(e => ({
-      zoneCode:    e.order_zone,
-      dataGb:      String(e.data_gb),
-      rate:        toFloat(e.rate) ?? 1,
-      priceBefore: r2(e.price_before),
-      priceAfter:  r2(e.price_after),
-      ordersBefore: e.orders_before,
-      ordersAfter:  e.orders_after,
+      zoneCode:       e.order_zone,
+      dataGb:         String(e.data_gb),
+      priceBeforeEur: r2(e.price_before_eur),
+      priceBeforeUsd: r2(e.price_before_usd),
+      priceAfterEur:  r2(e.price_after_eur),
+      priceAfterUsd:  r2(e.price_after_usd),
+      ordersBefore:   e.orders_before,
+      ordersAfter:    e.orders_after,
       grossRevBefore: r2(e.gross_rev_before) ?? 0,
       grossRevAfter:  r2(e.gross_rev_after)  ?? 0,
       netRevBefore:   r2(e.net_rev_before)   ?? 0,
       netRevAfter:    r2(e.net_rev_after)    ?? 0,
     }));
 
-    const currencies: CurrencyRate[] = currEntries.map(c => ({
-      rate: toFloat(c.rate) ?? 1,
-    }));
-    if (!currencies.find(c => c.rate === 1)) {
-      currencies.unshift({ rate: 1 });
-    }
-
-    const data: OrderComparisonData = { rows: result, nDays, beforeFrom, beforeTo, afterFrom, afterTo, currencies };
+    const data: OrderComparisonData = { rows: result, nDays, beforeFrom, beforeTo, afterFrom, afterTo };
     res.json(data);
   } catch (err) {
     console.error(err);
