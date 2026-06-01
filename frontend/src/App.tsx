@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import PricingTable from './components/PricingTable';
+import ComparisonTableV0 from './components/ComparisonTableV0';
 import ComparisonTable from './components/ComparisonTable';
 import styles from './App.module.css';
 
@@ -68,6 +69,34 @@ export interface ComparisonData {
   projAssumptions: ProjectionAssumption[];
 }
 
+export interface CurrencyRate {
+  rate: number;
+}
+
+export interface OrderComparisonRow {
+  zoneCode: string;
+  dataGb: string;
+  rate: number;
+  priceBefore: number | null;
+  priceAfter: number | null;
+  ordersBefore: number;
+  ordersAfter: number;
+  grossRevBefore: number;
+  grossRevAfter: number;
+  netRevBefore: number;
+  netRevAfter: number;
+}
+
+export interface OrderComparisonData {
+  rows: OrderComparisonRow[];
+  nDays: number;
+  beforeFrom: string;
+  beforeTo: string;
+  afterFrom: string;
+  afterTo: string;
+  currencies: CurrencyRate[];
+}
+
 function getToday(): string {
   return new Date().toISOString().split('T')[0];
 }
@@ -78,7 +107,7 @@ function subtractDays(dateStr: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
-type View = 'pricing' | 'comparison';
+type View = 'pricing' | 'comparison' | 'comparison2';
 
 export default function App() {
   const today = getToday();
@@ -92,17 +121,24 @@ export default function App() {
   const [pricingLoading, setPricingLoading] = useState(true);
   const [pricingError, setPricingError] = useState<string | null>(null);
 
-  // ── Comparison view state ─────────────────────────────────────────────────
+  // ── Comparison view state (shared date controls) ──────────────────────────
   const defaultRefDate = subtractDays(today, 14);
   const [pendingRefDate, setPendingRefDate] = useState<string>(defaultRefDate);
   const [pendingWeeks, setPendingWeeks] = useState<number>(2);
   const [appliedComparison, setAppliedComparison] = useState<{ refDate: string; weeks: number }>({ refDate: defaultRefDate, weeks: 2 });
+
+  // Before / After v0 (old mart_pricing_margin model)
   const [compData, setCompData] = useState<ComparisonData | null>(null);
   const [compLoading, setCompLoading] = useState(false);
   const [compError, setCompError] = useState<string | null>(null);
 
+  // Before / After (new bi_users_orders model)
+  const [comp2Data, setComp2Data] = useState<OrderComparisonData | null>(null);
+  const [comp2Loading, setComp2Loading] = useState(false);
+  const [comp2Error, setComp2Error] = useState<string | null>(null);
+
   // ── Navigation ────────────────────────────────────────────────────────────
-  const [view, setView] = useState<View>('comparison');
+  const [view, setView] = useState<View>('comparison2');
 
   // ── Fetch pricing ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -115,7 +151,7 @@ export default function App() {
       .finally(() => setPricingLoading(false));
   }, [appliedRange.from, appliedRange.to]);
 
-  // ── Fetch comparison ──────────────────────────────────────────────────────
+  // ── Fetch comparison v0 ───────────────────────────────────────────────────
   useEffect(() => {
     if (view !== 'comparison') return;
     setCompLoading(true);
@@ -125,6 +161,18 @@ export default function App() {
       .then((json: ComparisonData) => setCompData(json))
       .catch((err: Error) => setCompError(err.message))
       .finally(() => setCompLoading(false));
+  }, [view, appliedComparison.refDate, appliedComparison.weeks]);
+
+  // ── Fetch comparison v2 ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (view !== 'comparison2') return;
+    setComp2Loading(true);
+    setComp2Error(null);
+    fetch(`/api/pricing/comparison2?refDate=${appliedComparison.refDate}&weeks=${appliedComparison.weeks}`)
+      .then((res) => { if (!res.ok) throw new Error('Network error'); return res.json(); })
+      .then((json: OrderComparisonData) => setComp2Data(json))
+      .catch((err: Error) => setComp2Error(err.message))
+      .finally(() => setComp2Loading(false));
   }, [view, appliedComparison.refDate, appliedComparison.weeks]);
 
   return (
@@ -138,14 +186,8 @@ export default function App() {
           <h1 className={styles.title}>Pricing Manager</h1>
           <nav className={styles.nav}>
             <button
-              className={view === 'pricing' ? styles.navActive : styles.navBtn}
-              onClick={() => setView('pricing')}
-            >
-              Pricing Table
-            </button>
-            <button
-              className={view === 'comparison' ? styles.navActive : styles.navBtn}
-              onClick={() => setView('comparison')}
+              className={view === 'comparison2' ? styles.navActive : styles.navBtn}
+              onClick={() => setView('comparison2')}
             >
               Before / After
             </button>
@@ -190,40 +232,51 @@ export default function App() {
           </>
         )}
 
+        {(view === 'comparison' || view === 'comparison2') && (
+          <div className={styles.toolbar}>
+            <label className={styles.label} htmlFor="ref-date">Reference date</label>
+            <input
+              id="ref-date"
+              type="date"
+              className={styles.dateInput}
+              value={pendingRefDate}
+              max={today}
+              onChange={(e) => setPendingRefDate(e.target.value)}
+            />
+            <label className={styles.label} htmlFor="weeks-select">Weeks</label>
+            <select
+              id="weeks-select"
+              className={styles.dateInput}
+              value={pendingWeeks}
+              onChange={(e) => setPendingWeeks(Number(e.target.value))}
+            >
+              {[1, 2, 3, 4, 6, 8, 12].map(w => (
+                <option key={w} value={w}>{w} {w === 1 ? 'week' : 'weeks'}</option>
+              ))}
+            </select>
+            <button
+              className={styles.applyBtn}
+              onClick={() => setAppliedComparison({ refDate: pendingRefDate, weeks: pendingWeeks })}
+              disabled={!pendingRefDate}
+            >
+              Apply
+            </button>
+          </div>
+        )}
+
+        {view === 'comparison2' && (
+          <>
+            {comp2Loading && <div className={styles.state}>Loading…</div>}
+            {comp2Error && <div className={styles.stateError}>Error: {comp2Error}</div>}
+            {!comp2Loading && !comp2Error && comp2Data && <ComparisonTable data={comp2Data} />}
+          </>
+        )}
+
         {view === 'comparison' && (
           <>
-            <div className={styles.toolbar}>
-              <label className={styles.label} htmlFor="ref-date">Reference date</label>
-              <input
-                id="ref-date"
-                type="date"
-                className={styles.dateInput}
-                value={pendingRefDate}
-                max={today}
-                onChange={(e) => setPendingRefDate(e.target.value)}
-              />
-              <label className={styles.label} htmlFor="weeks-select">Weeks</label>
-              <select
-                id="weeks-select"
-                className={styles.dateInput}
-                value={pendingWeeks}
-                onChange={(e) => setPendingWeeks(Number(e.target.value))}
-              >
-                {[1, 2, 3, 4, 6, 8, 12].map(w => (
-                  <option key={w} value={w}>{w} {w === 1 ? 'week' : 'weeks'}</option>
-                ))}
-              </select>
-              <button
-                className={styles.applyBtn}
-                onClick={() => setAppliedComparison({ refDate: pendingRefDate, weeks: pendingWeeks })}
-                disabled={!pendingRefDate}
-              >
-                Apply
-              </button>
-            </div>
             {compLoading && <div className={styles.state}>Loading…</div>}
             {compError && <div className={styles.stateError}>Error: {compError}</div>}
-            {!compLoading && !compError && compData && <ComparisonTable data={compData} />}
+            {!compLoading && !compError && compData && <ComparisonTableV0 data={compData} />}
           </>
         )}
       </main>
