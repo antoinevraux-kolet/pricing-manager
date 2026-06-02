@@ -94,6 +94,92 @@
 .marginWarn     { color: #B45309; }
 .marginNegative { color: #991B1B; }
 
+/* ── Expandable rows ─────────────────────────────────────────────────────── */
+.trClickable { cursor: pointer; }
+.expandArrow {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 9px;
+  color: var(--color-text-secondary);
+  transition: transform 0.15s;
+  vertical-align: middle;
+}
+.expandArrowOpen { transform: rotate(90deg); }
+
+.expandedCell {
+  padding: 0;
+  background: #F5F3FF;
+  border-bottom: 2px solid #DDD6FE;
+}
+.distributionContent {
+  padding: 16px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Stats pills */
+.distStats {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.statPill {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.statPill strong { color: var(--color-text); font-size: 13px; }
+.statPillMu { border-color: #A78BFA; }
+.statPillMu strong { color: #7C3AED; }
+.statPillSigma strong { color: #7C3AED; }
+
+/* Chart */
+.chartWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chartTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--color-text-secondary);
+}
+.chartLegend {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.legendSwatch {
+  display: inline-block;
+  width: 12px;
+  height: 4px;
+  border-radius: 2px;
+}
+.distLoading {
+  padding: 20px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.distError {
+  padding: 20px;
+  font-size: 13px;
+  color: #991B1B;
+}
+
 /* ── Margin bar ──────────────────────────────────────────────────────────── */
 .marginCell {
   display: flex;

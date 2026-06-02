@@ -569,3 +569,56 @@ pricingRouter.get('/historical-margins', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch historical margins' });
   }
 });
+
+pricingRouter.get('/historical-margins/distribution', async (req, res) => {
+  try {
+    const startDate = typeof req.query.startDate === 'string' ? req.query.startDate : subtractDays(getToday(), 365);
+    const zone      = typeof req.query.zone      === 'string' ? req.query.zone      : null;
+    if (!zone) return res.status(400).json({ error: 'zone is required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return res.status(400).json({ error: 'Invalid date' });
+    const today = getToday();
+
+    const [rows] = await bigquery.query({
+      query: `
+        WITH margins AS (
+          SELECT SAFE_DIVIDE(
+            net_revenue_ht_eur - total_cost_eur - payment_fees_eur,
+            net_revenue_ht_eur
+          ) AS margin
+          FROM \`${process.env.BIGQUERY_PROJECT_ID}.${BI_DATASET}.fct_data_plan\`
+          WHERE created_at > @startDate
+            AND expiration_date < @today
+            AND plan_zone_name = @zone
+            AND net_revenue_ht_eur > 0
+        ),
+        stats AS (
+          SELECT AVG(margin) AS mean, STDDEV(margin) AS std_dev, COUNT(*) AS total_count
+          FROM margins
+        ),
+        histogram AS (
+          SELECT ROUND(margin * 40) / 40.0 AS bucket, COUNT(*) AS cnt
+          FROM margins
+          GROUP BY bucket
+          HAVING bucket BETWEEN -2.0 AND 3.0
+        )
+        SELECT h.bucket, h.cnt, s.mean, s.std_dev, s.total_count
+        FROM histogram h CROSS JOIN stats s
+        ORDER BY h.bucket
+      `,
+      params: { startDate, today, zone },
+    });
+
+    if (!rows.length) return res.json({ buckets: [], mean: null, stdDev: null, totalCount: 0 });
+
+    const first = rows[0] as Record<string, unknown>;
+    res.json({
+      buckets:    (rows as Record<string, unknown>[]).map(r => ({ margin: toFloat(r.bucket) ?? 0, count: Number(r.cnt) || 0 })),
+      mean:       toFloat(first.mean),
+      stdDev:     toFloat(first.std_dev),
+      totalCount: Number(first.total_count) || 0,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch distribution' });
+  }
+});
