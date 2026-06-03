@@ -3,6 +3,7 @@ import PricingTable from './components/PricingTable';
 import ComparisonTableV0 from './components/ComparisonTableV0';
 import ComparisonTable from './components/ComparisonTable';
 import HistoricalMargins from './components/HistoricalMargins';
+import Elasticity from './components/Elasticity';
 import styles from './App.module.css';
 
 export interface CellMetrics {
@@ -122,7 +123,7 @@ function subtractDays(dateStr: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
-type View = 'pricing' | 'comparison' | 'comparison2' | 'margins';
+type View = 'pricing' | 'comparison' | 'comparison2' | 'margins' | 'elasticity';
 
 export default function App() {
   const today = getToday();
@@ -230,6 +231,12 @@ export default function App() {
             >
               Historical Margins
             </button>
+            <button
+              className={view === 'elasticity' ? styles.navActive : styles.navBtn}
+              onClick={() => setView('elasticity')}
+            >
+              Price Elasticity
+            </button>
           </nav>
         </div>
       </header>
@@ -290,6 +297,7 @@ export default function App() {
             {!marginsLoading && !marginsError && marginsData && <HistoricalMargins data={marginsData} />}
           </>
         )}
+        {view === 'elasticity' && <Elasticity />}
       </main>
     </div>
   );

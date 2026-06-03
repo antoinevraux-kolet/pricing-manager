@@ -4,7 +4,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 import express from 'express';
 import cors from 'cors';
-import { pricingRouter } from './routes/pricing';
+import { pricingRouter }     from './routes/pricing';
+import { elasticityRouter } from './routes/elasticity';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -12,7 +13,8 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-app.use('/api/pricing', pricingRouter);
+app.use('/api/pricing',     pricingRouter);
+app.use('/api/elasticity', elasticityRouter);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
