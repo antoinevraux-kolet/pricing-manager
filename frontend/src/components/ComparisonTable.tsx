@@ -233,8 +233,8 @@ export default function ComparisonTable({ data }: Props) {
                     return (
                       <tr key={`${zone}-${row.dataGb}`} className={styles.planRow}>
                         <td className={styles.planCell}>{row.dataGb} GB</td>
-                        <GroupCells groupKey="priceEur"  hdrClass={styles.priceHdr}    beforeVal={row.priceBeforeEur} afterVal={row.priceAfterEur} />
-                        <GroupCells groupKey="priceUsd"  hdrClass={styles.priceUsdHdr} beforeVal={row.priceBeforeUsd} afterVal={row.priceAfterUsd} />
+                        <GroupCells groupKey="priceEur"  hdrClass={styles.priceHdr}    beforeVal={row.priceBeforeEur} afterVal={row.priceAfterEur} positiveIsGood={false} />
+                        <GroupCells groupKey="priceUsd"  hdrClass={styles.priceUsdHdr} beforeVal={row.priceBeforeUsd} afterVal={row.priceAfterUsd} positiveIsGood={false} />
                         <GroupCells groupKey="orders"    hdrClass={styles.ordersHdr}   beforeVal={row.ordersBefore}  afterVal={row.ordersAfter}   fmt={v => v.toLocaleString('en-US')} />
                         <GroupCells groupKey="grossRev"  hdrClass={styles.grossRevHdr} beforeVal={row.grossRevBefore} afterVal={row.grossRevAfter} prefix="€" />
                         <GroupCells groupKey="grossAov"  hdrClass={styles.grossAovHdr} beforeVal={grossAovBefore}    afterVal={grossAovAfter}     prefix="€" />
