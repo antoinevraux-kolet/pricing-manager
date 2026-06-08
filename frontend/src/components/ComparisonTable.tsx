@@ -1,9 +1,9 @@
 import { Fragment, useState } from 'react';
 import { zoneLabel, zoneName, fmt, pctDelta, fmtDate, DeltaBadge } from './ComparisonTableV0';
-import type { OrderComparisonData, OrderComparisonRow } from '../App';
+import type { OrderComparisonData, OrderComparisonRow, DestinationVisitsData } from '../App';
 import styles from './ComparisonTable.module.css';
 
-type GroupKey = 'priceEur' | 'priceUsd' | 'orders' | 'grossRev' | 'netRev' | 'grossAov' | 'netAov';
+type GroupKey = 'priceEur' | 'priceUsd' | 'visitors' | 'orders' | 'grossRev' | 'netRev' | 'grossAov' | 'netAov';
 
 function ColInfo({ text }: { text: string }) {
   return (
@@ -14,9 +14,9 @@ function ColInfo({ text }: { text: string }) {
   );
 }
 
-interface Props { data: OrderComparisonData }
+interface Props { data: OrderComparisonData; visits?: DestinationVisitsData }
 
-export default function ComparisonTable({ data }: Props) {
+export default function ComparisonTable({ data, visits }: Props) {
   const { rows, nDays, beforeFrom, beforeTo, afterFrom, afterTo } = data;
 
   const allZones = [...new Set(rows.map(r => r.zoneCode))];
@@ -33,7 +33,7 @@ export default function ComparisonTable({ data }: Props) {
   });
   const isOpen = (key: GroupKey) => !collapsed.has(key);
 
-  const KEYS: GroupKey[] = ['priceEur', 'priceUsd', 'orders', 'grossRev', 'grossAov', 'netRev', 'netAov'];
+  const KEYS: GroupKey[] = ['priceEur', 'priceUsd', 'visitors', 'orders', 'grossRev', 'grossAov', 'netRev', 'netAov'];
   const NCOLS = 1 + KEYS.reduce((s, k) => s + (isOpen(k) ? 3 : 1), 0);
 
   const searchLower = search.toLowerCase();
@@ -159,8 +159,9 @@ export default function ComparisonTable({ data }: Props) {
             <tr>
               <th className={styles.planHeader} rowSpan={2}>PLAN</th>
               <GroupHeader groupKey="priceEur"  hdrClass={styles.priceHdr}    label="PRICE EUR"       info="AVG(order_original_price_amount) — orders with exchange rate = 1" />
-              <GroupHeader groupKey="priceUsd"  hdrClass={styles.priceUsdHdr} label="PRICE USD"       info="AVG(order_original_price_amount) — orders with exchange rate ≠ 1" />
-              <GroupHeader groupKey="orders"    hdrClass={styles.ordersHdr}   label="ORDERS"          info="COUNT of paid non-gift orders (all currencies)" />
+              <GroupHeader groupKey="priceUsd"  hdrClass={styles.priceUsdHdr}  label="PRICE USD"          info="AVG(order_original_price_amount) — orders with exchange rate ≠ 1" />
+              <GroupHeader groupKey="visitors"  hdrClass={styles.visitorsHdr}  label="UNIQUE VISITORS"    info="Unique visitors on the destination page — PostHog (zone level, not per plan)" />
+              <GroupHeader groupKey="orders"    hdrClass={styles.ordersHdr}    label="ORDERS"             info="COUNT of paid non-gift orders (all currencies)" />
               <GroupHeader groupKey="grossRev"  hdrClass={styles.grossRevHdr} label="GROSS REV (EUR)" info="SUM(price_euro_cents) / 100 — incl. tax, after discounts & Koins" />
               <GroupHeader groupKey="grossAov" hdrClass={styles.grossAovHdr} label="GROSS AOV (EUR)"  info="Gross Revenue / Orders — average gross order value" />
               <GroupHeader groupKey="netRev"    hdrClass={styles.netRevHdr}   label="NET REV (EUR)"   info="SUM(price_euro_cents) / 120 — gross revenue ex. 20% VAT" />
@@ -176,6 +177,11 @@ export default function ComparisonTable({ data }: Props) {
                 <th className={`${styles.subBefore} ${styles.priceUsdHdr}`}>Before</th>
                 <th className={`${styles.subAfter}  ${styles.priceUsdHdr}`}>After</th>
                 <th className={`${styles.subDelta}  ${styles.priceUsdHdr}`}>Δ</th>
+              </>}
+              {isOpen('visitors') && <>
+                <th className={`${styles.subBefore} ${styles.visitorsHdr}`}>Before</th>
+                <th className={`${styles.subAfter}  ${styles.visitorsHdr}`}>After</th>
+                <th className={`${styles.subDelta}  ${styles.visitorsHdr}`}>Δ</th>
               </>}
               {isOpen('orders') && <>
                 <th className={`${styles.subBefore} ${styles.ordersHdr}`}>Before</th>
@@ -234,8 +240,9 @@ export default function ComparisonTable({ data }: Props) {
                       <tr key={`${zone}-${row.dataGb}`} className={styles.planRow}>
                         <td className={styles.planCell}>{row.dataGb} GB</td>
                         <GroupCells groupKey="priceEur"  hdrClass={styles.priceHdr}    beforeVal={row.priceBeforeEur} afterVal={row.priceAfterEur} positiveIsGood={false} />
-                        <GroupCells groupKey="priceUsd"  hdrClass={styles.priceUsdHdr} beforeVal={row.priceBeforeUsd} afterVal={row.priceAfterUsd} positiveIsGood={false} />
-                        <GroupCells groupKey="orders"    hdrClass={styles.ordersHdr}   beforeVal={row.ordersBefore}  afterVal={row.ordersAfter}   fmt={v => v.toLocaleString('en-US')} />
+                        <GroupCells groupKey="priceUsd"  hdrClass={styles.priceUsdHdr}  beforeVal={row.priceBeforeUsd} afterVal={row.priceAfterUsd} positiveIsGood={false} />
+                        <GroupCells groupKey="visitors"  hdrClass={styles.visitorsHdr}  beforeVal={null} afterVal={null} fmt={v => v.toLocaleString('en-US')} />
+                        <GroupCells groupKey="orders"    hdrClass={styles.ordersHdr}    beforeVal={row.ordersBefore}  afterVal={row.ordersAfter}   fmt={v => v.toLocaleString('en-US')} />
                         <GroupCells groupKey="grossRev"  hdrClass={styles.grossRevHdr} beforeVal={row.grossRevBefore} afterVal={row.grossRevAfter} prefix="€" />
                         <GroupCells groupKey="grossAov"  hdrClass={styles.grossAovHdr} beforeVal={grossAovBefore}    afterVal={grossAovAfter}     prefix="€" />
                         <GroupCells groupKey="netRev"    hdrClass={styles.netRevHdr}   beforeVal={row.netRevBefore}  afterVal={row.netRevAfter}   prefix="€" />
@@ -255,6 +262,11 @@ export default function ComparisonTable({ data }: Props) {
                     ) : (
                       <td className={`${styles.collapsedCell} ${styles.priceUsdHdr} ${styles.groupStartCell}`} />
                     )}
+                    <GroupCells groupKey="visitors" hdrClass={styles.visitorsHdr}
+                      beforeVal={visits?.before[zone] ?? null}
+                      afterVal={visits?.after[zone] ?? null}
+                      fmt={v => v.toLocaleString('en-US')}
+                    />
                     <GroupCells groupKey="orders"   hdrClass={styles.ordersHdr}   beforeVal={sumOrdersBefore}   afterVal={sumOrdersAfter}   fmt={v => v.toLocaleString('en-US')} />
                     <GroupCells groupKey="grossRev" hdrClass={styles.grossRevHdr} beforeVal={sumGrossRevBefore} afterVal={sumGrossRevAfter}  prefix="€" />
                     <GroupCells groupKey="grossAov" hdrClass={styles.grossAovHdr} beforeVal={sumOrdersBefore > 0 ? sumGrossRevBefore / sumOrdersBefore : null} afterVal={sumOrdersAfter > 0 ? sumGrossRevAfter / sumOrdersAfter : null} prefix="€" />

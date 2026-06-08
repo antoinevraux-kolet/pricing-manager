@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { BigQuery } from '@google-cloud/bigquery';
+import { getDestinationVisitsSummary } from './posthog-destination-visits';
 
 const bigquery = new BigQuery({
   projectId: process.env.BIGQUERY_PROJECT_ID,
@@ -567,6 +568,92 @@ pricingRouter.get('/historical-margins', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch historical margins' });
+  }
+});
+
+// Maps PostHog URL slug (after stripping "esim-") → order_zone value in bi_users_orders
+const POSTHOG_SLUG_TO_ZONE: Record<string, string> = {
+  'albania': 'Albania', 'andorra': 'Andorra', 'austria': 'Austria',
+  'belgium': 'Belgium', 'bulgaria': 'Bulgaria',
+  'bosnia-and-herzegovina': 'Bosnia and Herzegovina', 'belarus': 'Belarus',
+  'switzerland': 'Switzerland', 'cyprus': 'Cyprus', 'czech-republic': 'Czech Republic',
+  'germany': 'Germany', 'denmark': 'Denmark', 'spain': 'Spain', 'estonia': 'Estonia',
+  'finland': 'Finland', 'france': 'France', 'united-kingdom': 'United Kingdom',
+  'greece': 'Greece', 'croatia': 'Croatia', 'hungary': 'Hungary', 'ireland': 'Ireland',
+  'iceland': 'Iceland', 'italy': 'Italy', 'lithuania': 'Lithuania',
+  'luxembourg': 'Luxembourg', 'latvia': 'Latvia', 'monaco': 'Monaco',
+  'moldova': 'Moldova', 'macedonia': 'Macedonia', 'malta': 'Malta',
+  'montenegro': 'Montenegro', 'netherlands': 'Netherlands', 'norway': 'Norway',
+  'poland': 'Poland', 'portugal': 'Portugal', 'romania': 'Romania',
+  'serbia': 'Serbia', 'slovakia': 'Slovakia', 'slovenia': 'Slovenia',
+  'sweden': 'Sweden', 'ukraine': 'Ukraine',
+  'united-arab-emirates': 'United Arab Emirates', 'armenia': 'Armenia',
+  'azerbaijan': 'Azerbaijan', 'bahrain': 'Bahrain', 'georgia': 'Georgia',
+  'iraq': 'Iraq', 'israel': 'Israel', 'jordan': 'Jordan', 'kuwait': 'Kuwait',
+  'oman': 'Oman', 'qatar': 'Qatar', 'saudi-arabia': 'Saudi Arabia', 'turkey': 'Turkey',
+  'benin': 'Benin', 'botswana': 'Botswana', 'ivory-coast': 'Ivory Coast',
+  'cameroon': 'Cameroon', 'democratic-republic-of-congo': 'Democratic Republic of Congo',
+  'cape-verde': 'Cape Verde', 'algeria': 'Algeria', 'egypt': 'Egypt',
+  'ghana': 'Ghana', 'guinea': 'Guinea', 'kenya': 'Kenya', 'morocco': 'Morocco',
+  'madagascar': 'Madagascar', 'mauritius': 'Mauritius', 'nigeria': 'Nigeria',
+  'senegal': 'Senegal', 'seychelles': 'Seychelles', 'togo': 'Togo',
+  'tunisia': 'Tunisia', 'tanzania': 'Tanzania', 'south-africa': 'South Africa',
+  'australia': 'Australia', 'china': 'China', 'hong-kong': 'Hong Kong',
+  'indonesia': 'Indonesia', 'india': 'India', 'japan': 'Japan',
+  'cambodia': 'Cambodia', 'south-korea': 'South Korea', 'laos': 'Laos',
+  'sri-lanka': 'Sri Lanka', 'maldives': 'Maldives', 'malaysia': 'Malaysia',
+  'pakistan': 'Pakistan', 'philippines': 'Philippines',
+  'french-polynesia': 'French Polynesia', 'singapore': 'Singapore',
+  'thailand': 'Thailand', 'taiwan': 'Taiwan', 'uzbekistan': 'Uzbekistan',
+  'vietnam': 'Vietnam',
+  'anguilla': 'Anguilla', 'argentina': 'Argentina', 'bahamas': 'Bahamas',
+  'belize': 'Belize', 'brazil': 'Brazil', 'canada': 'Canada', 'chile': 'Chile',
+  'colombia': 'Colombia', 'costa-rica': 'Costa Rica', 'curacao': 'Curaçao',
+  'dominican-republic': 'Dominican Republic', 'ecuador': 'Ecuador',
+  'jamaica': 'Jamaica', 'mexico': 'Mexico', 'panama': 'Panama', 'peru': 'Peru',
+  'suriname': 'Suriname', 'sint-maarten': 'Sint Maarten',
+  'united-states-of-america': 'United States of America',
+  'bonaire-sint-eustatius-and-saba': 'Bonaire, Sint Eustatius and Saba',
+  'africa1': 'Africa 1', 'africa2': 'Africa 2', 'asia': 'Asia',
+  'caribbean': 'Caribbean', 'europe': 'Europe',
+  'euk': 'European Union and UK', 'global': 'Global',
+  'latin-america': 'Latin America', 'mena': 'Middle East and North Africa',
+  'netherlands-antilles': 'Netherlands Antilles', 'north-america': 'North America',
+  'oceania1': 'Oceania 1',
+};
+
+pricingRouter.get('/destination-visits', async (req, res) => {
+  try {
+    const refDate = typeof req.query.refDate === 'string' ? req.query.refDate : subtractDays(getToday(), 14);
+    const weeksRaw = typeof req.query.weeks === 'string' ? parseInt(req.query.weeks, 10) : NaN;
+    const weeks = isNaN(weeksRaw) ? 2 : Math.max(1, Math.min(12, weeksRaw));
+
+    const nDays      = 7 * weeks - 1;
+    const beforeTo   = subtractDays(refDate, 1);
+    const beforeFrom = subtractDays(refDate, nDays);
+    const afterFrom  = addDays(refDate, 1);
+    const afterTo    = addDays(refDate, nDays);
+
+    const [rawBefore, rawAfter] = await Promise.all([
+      getDestinationVisitsSummary({ startDate: beforeFrom, endDate: beforeTo }),
+      getDestinationVisitsSummary({ startDate: afterFrom,  endDate: afterTo  }),
+    ]);
+
+    const toMap = (arr: { destination: string; uniqueVisitors: number }[]) => {
+      const map: Record<string, number> = {};
+      for (const v of arr) {
+        const slug = v.destination.replace(/^esim-/, '');
+        const zone = POSTHOG_SLUG_TO_ZONE[slug];
+        if (zone) map[zone] = v.uniqueVisitors;
+      }
+      return map;
+    };
+
+    res.json({ before: toMap(rawBefore), after: toMap(rawAfter), beforeFrom, beforeTo, afterFrom, afterTo });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[destination-visits]', msg);
+    res.status(500).json({ error: msg });
   }
 });
 

@@ -94,6 +94,15 @@ export interface OrderComparisonData {
   afterTo: string;
 }
 
+export interface DestinationVisitsData {
+  before: Record<string, number>;
+  after: Record<string, number>;
+  beforeFrom: string;
+  beforeTo: string;
+  afterFrom: string;
+  afterTo: string;
+}
+
 export interface HistoricalMarginRow {
   zoneCode: string;
   nDataPlans: number;
@@ -150,6 +159,11 @@ export default function App() {
   const [comp2Loading, setComp2Loading] = useState(false);
   const [comp2Error, setComp2Error] = useState<string | null>(null);
 
+  // ── Destination visits state ─────────────────────────────────────────────
+  const [visitsData, setVisitsData] = useState<DestinationVisitsData | null>(null);
+  const [visitsLoading, setVisitsLoading] = useState(false);
+  const [visitsError, setVisitsError] = useState<string | null>(null);
+
   // ── Historical margins state ──────────────────────────────────────────────
   const defaultMarginsDate = '2026-01-01';
   const [pendingMarginsDate, setPendingMarginsDate] = useState<string>(defaultMarginsDate);
@@ -194,6 +208,18 @@ export default function App() {
       .then((json: OrderComparisonData) => setComp2Data(json))
       .catch((err: Error) => setComp2Error(err.message))
       .finally(() => setComp2Loading(false));
+  }, [view, appliedComparison.refDate, appliedComparison.weeks]);
+
+  // ── Fetch destination visits ──────────────────────────────────────────────
+  useEffect(() => {
+    if (view !== 'comparison2') return;
+    setVisitsLoading(true);
+    setVisitsError(null);
+    fetch(`/api/pricing/destination-visits?refDate=${appliedComparison.refDate}&weeks=${appliedComparison.weeks}`)
+      .then((res) => { if (!res.ok) throw new Error('Network error'); return res.json(); })
+      .then((json: DestinationVisitsData) => setVisitsData(json))
+      .catch((err: Error) => setVisitsError(err.message))
+      .finally(() => setVisitsLoading(false));
   }, [view, appliedComparison.refDate, appliedComparison.weeks]);
 
   // ── Fetch historical margins ──────────────────────────────────────────────
@@ -266,7 +292,9 @@ export default function App() {
           <>
             {comp2Loading && <div className={styles.state}>Loading…</div>}
             {comp2Error && <div className={styles.stateError}>Error: {comp2Error}</div>}
-            {!comp2Loading && !comp2Error && comp2Data && <ComparisonTable data={comp2Data} />}
+            {!comp2Loading && !comp2Error && comp2Data && (
+              <ComparisonTable data={comp2Data} visits={visitsData ?? undefined} />
+            )}
           </>
         )}
 
