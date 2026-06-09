@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, type CSSProperties } from 'react';
 import type { OrderComparisonData, OrderComparisonRow, DestinationVisitsData, OrderObservationData, OrderObservationRow, DestinationVisitsSingleData } from '../App';
 import styles from './ComparisonTable.module.css';
 
@@ -211,6 +211,30 @@ function pctDelta(before: number | null, after: number | null): number | null {
   return Math.round((after - before) / Math.abs(before) * 1000) / 10;
 }
 
+function marginColor(ratio: number | null): string {
+  if (ratio == null) return 'inherit';
+  type RGB = [number, number, number];
+  const stops: [number, RGB][] = [
+    [0,     [185,  28,  28]],
+    [0.25,  [234,  88,  12]],
+    [0.50,  [202, 138,   4]],
+    [0.625, [101, 163,  13]],
+    [0.75,  [ 21, 128,  61]],
+  ];
+  if (ratio <= 0)    return `rgb(${stops[0][1].join(',')})`;
+  if (ratio >= 0.75) return `rgb(${stops[4][1].join(',')})`;
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [r0, c0] = stops[i];
+    const [r1, c1] = stops[i + 1];
+    if (ratio >= r0 && ratio <= r1) {
+      const t = (ratio - r0) / (r1 - r0);
+      const ch = (j: number) => Math.round(c0[j] + t * (c1[j] - c0[j]));
+      return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
+    }
+  }
+  return `rgb(21,128,61)`;
+}
+
 function fmtDate(d: string): string {
   const [y, m, day] = d.split('-');
   return `${day}/${m}/${y}`;
@@ -345,11 +369,12 @@ export default function ComparisonTable() {
     );
 
   // ── GroupCells (comparison — 3 cols) ─────────────────────────────────────
-  function GroupCells({ groupKey, hdrClass, beforeVal, afterVal, fmt: fmtFn, prefix = '', positiveIsGood = true, deltaMode = 'pctChange' }: {
+  function GroupCells({ groupKey, hdrClass, beforeVal, afterVal, fmt: fmtFn, prefix = '', positiveIsGood = true, deltaMode = 'pctChange', styleVal }: {
     groupKey: GroupKey; hdrClass: string;
     beforeVal: number | null; afterVal: number | null;
     fmt?: (v: number) => string; prefix?: string; positiveIsGood?: boolean;
     deltaMode?: 'pctChange' | 'absPts';
+    styleVal?: (v: number | null) => CSSProperties;
   }) {
     const f = fmtFn ?? ((v: number) => fmt(v));
     const delta = deltaMode === 'absPts'
@@ -359,21 +384,22 @@ export default function ComparisonTable() {
     if (!isOpen(groupKey)) return <td className={`${styles.collapsedCell} ${hdrClass} ${styles.groupStartCell}`} />;
     return (
       <>
-        <td className={`${styles.cell} ${hdrClass} ${styles.groupStartCell}`}>{beforeVal != null ? `${prefix}${f(beforeVal)}` : '—'}</td>
-        <td className={`${styles.cell} ${hdrClass}`}>{afterVal != null ? `${prefix}${f(afterVal)}` : '—'}</td>
+        <td className={`${styles.cell} ${hdrClass} ${styles.groupStartCell}`} style={styleVal?.(beforeVal)}>{beforeVal != null ? `${prefix}${f(beforeVal)}` : '—'}</td>
+        <td className={`${styles.cell} ${hdrClass}`} style={styleVal?.(afterVal)}>{afterVal != null ? `${prefix}${f(afterVal)}` : '—'}</td>
         <td className={`${styles.deltaCell} ${hdrClass}`}><DeltaBadge delta={delta} positiveIsGood={positiveIsGood} unit={unit} /></td>
       </>
     );
   }
 
   // ── GroupCellObs (observation — 1 col) ───────────────────────────────────
-  function GroupCellObs({ groupKey, hdrClass, val, fmtFn, prefix = '' }: {
+  function GroupCellObs({ groupKey, hdrClass, val, fmtFn, prefix = '', styleVal }: {
     groupKey: GroupKey; hdrClass: string; val: number | null;
     fmtFn?: (v: number) => string; prefix?: string;
+    styleVal?: (v: number | null) => CSSProperties;
   }) {
     const f = fmtFn ?? ((v: number) => fmt(v));
     if (!isOpen(groupKey)) return <td className={`${styles.collapsedCell} ${hdrClass} ${styles.groupStartCell}`} />;
-    return <td className={`${styles.cell} ${hdrClass} ${styles.groupStartCell}`}>{val != null ? `${prefix}${f(val)}` : '—'}</td>;
+    return <td className={`${styles.cell} ${hdrClass} ${styles.groupStartCell}`} style={styleVal?.(val)}>{val != null ? `${prefix}${f(val)}` : '—'}</td>;
   }
 
   // ── GroupHeader ───────────────────────────────────────────────────────────
@@ -579,7 +605,7 @@ export default function ComparisonTable() {
                           <GroupCells groupKey="netAov"       hdrClass={styles.netAovHdr}       beforeVal={netAovBefore}                             afterVal={netAovAfter}                             prefix="€" />
                           <GroupCells groupKey="totalCost"    hdrClass={styles.totalCostHdr}    beforeVal={row.totalCostBefore}                      afterVal={row.totalCostAfter}                      prefix="€" positiveIsGood={false} />
                           <GroupCells groupKey="marginEur"    hdrClass={styles.marginEurHdr}    beforeVal={row.netRevBefore - row.totalCostBefore}   afterVal={row.netRevAfter - row.totalCostAfter}    prefix="€" />
-                          <GroupCells groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} beforeVal={mgnBefore}                               afterVal={mgnAfter}                                fmt={v => (v * 100).toFixed(1) + '%'} deltaMode="absPts" />
+                          <GroupCells groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} beforeVal={mgnBefore}                               afterVal={mgnAfter}                                fmt={v => (v * 100).toFixed(1) + '%'} deltaMode="absPts" styleVal={v => ({ background: marginColor(v), color: '#fff', fontWeight: '700' })} />
                         </tr>
                       );
                     })}
@@ -596,7 +622,7 @@ export default function ComparisonTable() {
                       <GroupCells groupKey="netAov"       hdrClass={styles.netAovHdr}      beforeVal={sumOrdersBefore > 0 ? sumNetRevBefore / sumOrdersBefore : null} afterVal={sumOrdersAfter > 0 ? sumNetRevAfter / sumOrdersAfter : null} prefix="€" />
                       <GroupCells groupKey="totalCost"    hdrClass={styles.totalCostHdr}    beforeVal={sumCostBefore}                       afterVal={sumCostAfter}                       prefix="€" positiveIsGood={false} />
                       <GroupCells groupKey="marginEur"    hdrClass={styles.marginEurHdr}    beforeVal={sumNetRevBefore - sumCostBefore}      afterVal={sumNetRevAfter - sumCostAfter}      prefix="€" />
-                      <GroupCells groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} beforeVal={sumNetRevBefore > 0 ? (sumNetRevBefore - sumCostBefore) / sumNetRevBefore : null} afterVal={sumNetRevAfter > 0 ? (sumNetRevAfter - sumCostAfter) / sumNetRevAfter : null} fmt={v => (v * 100).toFixed(1) + '%'} deltaMode="absPts" />
+                      <GroupCells groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} beforeVal={sumNetRevBefore > 0 ? (sumNetRevBefore - sumCostBefore) / sumNetRevBefore : null} afterVal={sumNetRevAfter > 0 ? (sumNetRevAfter - sumCostAfter) / sumNetRevAfter : null} fmt={v => (v * 100).toFixed(1) + '%'} deltaMode="absPts" styleVal={v => ({ background: marginColor(v), color: '#fff', fontWeight: '700' })} />
                     </tr>
                   </Fragment>
                 );
@@ -634,7 +660,7 @@ export default function ComparisonTable() {
                           <GroupCellObs groupKey="netAov"       hdrClass={styles.netAovHdr}       val={netAov}                          prefix="€" />
                           <GroupCellObs groupKey="totalCost"    hdrClass={styles.totalCostHdr}    val={row.totalCost}                   prefix="€" />
                           <GroupCellObs groupKey="marginEur"    hdrClass={styles.marginEurHdr}    val={row.netRev - row.totalCost}      prefix="€" />
-                          <GroupCellObs groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} val={margin}                          fmtFn={v => (v * 100).toFixed(1) + '%'} />
+                          <GroupCellObs groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} val={margin}                          fmtFn={v => (v * 100).toFixed(1) + '%'} styleVal={v => ({ background: marginColor(v), color: '#fff', fontWeight: '700' })} />
                         </tr>
                       );
                     })}
@@ -651,7 +677,7 @@ export default function ComparisonTable() {
                       <GroupCellObs groupKey="netAov"       hdrClass={styles.netAovHdr}      val={sumOrders > 0 ? sumNetRev / sumOrders : null} prefix="€" />
                       <GroupCellObs groupKey="totalCost"    hdrClass={styles.totalCostHdr}    val={sumCost}                   prefix="€" />
                       <GroupCellObs groupKey="marginEur"    hdrClass={styles.marginEurHdr}    val={sumNetRev - sumCost}        prefix="€" />
-                      <GroupCellObs groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} val={sumNetRev > 0 ? (sumNetRev - sumCost) / sumNetRev : null} fmtFn={v => (v * 100).toFixed(1) + '%'} />
+                      <GroupCellObs groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} val={sumNetRev > 0 ? (sumNetRev - sumCost) / sumNetRev : null} fmtFn={v => (v * 100).toFixed(1) + '%'} styleVal={v => ({ background: marginColor(v), color: '#fff', fontWeight: '700' })} />
                     </tr>
                   </Fragment>
                 );
