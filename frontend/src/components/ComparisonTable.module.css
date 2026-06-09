@@ -396,6 +396,7 @@
 .marginHdr   { background: #F5F3FF; color: #6D28D9; border-left-color: #DDD6FE; }
 .visitorsHdr     { background: #FFF1F2; color: #BE185D; border-left-color: #FBCFE8; }
 .totalCostHdr    { background: #FFF7ED; color: #C2410C; border-left-color: #FED7AA; }
+.marginEurHdr    { background: #ECFDF5; color: #065F46; border-left-color: #6EE7B7; }
 .netMarginPctHdr { background: #F5F3FF; color: #6D28D9; border-left-color: #DDD6FE; }
 .grossRevHdr { background: #F0FDF4; color: #15803D; border-left-color: #BBF7D0; }
 .netRevHdr   { background: #F0FDFA; color: #0F766E; border-left-color: #99F6E4; }
