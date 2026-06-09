@@ -571,55 +571,62 @@ pricingRouter.get('/historical-margins', async (req, res) => {
   }
 });
 
-// Maps PostHog URL slug (after stripping "esim-") → order_zone value in bi_users_orders
-const POSTHOG_SLUG_TO_ZONE: Record<string, string> = {
-  'albania': 'Albania', 'andorra': 'Andorra', 'austria': 'Austria',
-  'belgium': 'Belgium', 'bulgaria': 'Bulgaria',
-  'bosnia-and-herzegovina': 'Bosnia and Herzegovina', 'belarus': 'Belarus',
-  'switzerland': 'Switzerland', 'cyprus': 'Cyprus', 'czech-republic': 'Czech Republic',
-  'germany': 'Germany', 'denmark': 'Denmark', 'spain': 'Spain', 'estonia': 'Estonia',
-  'finland': 'Finland', 'france': 'France', 'united-kingdom': 'United Kingdom',
-  'greece': 'Greece', 'croatia': 'Croatia', 'hungary': 'Hungary', 'ireland': 'Ireland',
-  'iceland': 'Iceland', 'italy': 'Italy', 'lithuania': 'Lithuania',
-  'luxembourg': 'Luxembourg', 'latvia': 'Latvia', 'monaco': 'Monaco',
-  'moldova': 'Moldova', 'macedonia': 'Macedonia', 'malta': 'Malta',
-  'montenegro': 'Montenegro', 'netherlands': 'Netherlands', 'norway': 'Norway',
-  'poland': 'Poland', 'portugal': 'Portugal', 'romania': 'Romania',
-  'serbia': 'Serbia', 'slovakia': 'Slovakia', 'slovenia': 'Slovenia',
-  'sweden': 'Sweden', 'ukraine': 'Ukraine',
-  'united-arab-emirates': 'United Arab Emirates', 'armenia': 'Armenia',
-  'azerbaijan': 'Azerbaijan', 'bahrain': 'Bahrain', 'georgia': 'Georgia',
-  'iraq': 'Iraq', 'israel': 'Israel', 'jordan': 'Jordan', 'kuwait': 'Kuwait',
-  'oman': 'Oman', 'qatar': 'Qatar', 'saudi-arabia': 'Saudi Arabia', 'turkey': 'Turkey',
-  'benin': 'Benin', 'botswana': 'Botswana', 'ivory-coast': 'Ivory Coast',
-  'cameroon': 'Cameroon', 'democratic-republic-of-congo': 'Democratic Republic of Congo',
-  'cape-verde': 'Cape Verde', 'algeria': 'Algeria', 'egypt': 'Egypt',
-  'ghana': 'Ghana', 'guinea': 'Guinea', 'kenya': 'Kenya', 'morocco': 'Morocco',
-  'madagascar': 'Madagascar', 'mauritius': 'Mauritius', 'nigeria': 'Nigeria',
-  'senegal': 'Senegal', 'seychelles': 'Seychelles', 'togo': 'Togo',
-  'tunisia': 'Tunisia', 'tanzania': 'Tanzania', 'south-africa': 'South Africa',
-  'australia': 'Australia', 'china': 'China', 'hong-kong': 'Hong Kong',
-  'indonesia': 'Indonesia', 'india': 'India', 'japan': 'Japan',
-  'cambodia': 'Cambodia', 'south-korea': 'South Korea', 'laos': 'Laos',
-  'sri-lanka': 'Sri Lanka', 'maldives': 'Maldives', 'malaysia': 'Malaysia',
-  'pakistan': 'Pakistan', 'philippines': 'Philippines',
-  'french-polynesia': 'French Polynesia', 'singapore': 'Singapore',
-  'thailand': 'Thailand', 'taiwan': 'Taiwan', 'uzbekistan': 'Uzbekistan',
-  'vietnam': 'Vietnam',
-  'anguilla': 'Anguilla', 'argentina': 'Argentina', 'bahamas': 'Bahamas',
-  'belize': 'Belize', 'brazil': 'Brazil', 'canada': 'Canada', 'chile': 'Chile',
-  'colombia': 'Colombia', 'costa-rica': 'Costa Rica', 'curacao': 'Curaçao',
-  'dominican-republic': 'Dominican Republic', 'ecuador': 'Ecuador',
-  'jamaica': 'Jamaica', 'mexico': 'Mexico', 'panama': 'Panama', 'peru': 'Peru',
-  'suriname': 'Suriname', 'sint-maarten': 'Sint Maarten',
-  'united-states-of-america': 'United States of America',
-  'bonaire-sint-eustatius-and-saba': 'Bonaire, Sint Eustatius and Saba',
-  'africa1': 'Africa 1', 'africa2': 'Africa 2', 'asia': 'Asia',
-  'caribbean': 'Caribbean', 'europe': 'Europe',
-  'euk': 'European Union and UK', 'global': 'Global',
-  'latin-america': 'Latin America', 'mena': 'Middle East and North Africa',
-  'netherlands-antilles': 'Netherlands Antilles', 'north-america': 'North America',
-  'oceania1': 'Oceania 1',
+// Maps ISO alpha-3 zone code (from PostHog plan_zone property) → order_zone in bi_users_orders
+const ISO_TO_ZONE_NAME: Record<string, string> = {
+  ALB: 'Albania', AND: 'Andorra', AUT: 'Austria', BEL: 'Belgium',
+  BGR: 'Bulgaria', BIH: 'Bosnia and Herzegovina', BLR: 'Belarus',
+  CHE: 'Switzerland', CYP: 'Cyprus', CZE: 'Czech Republic',
+  DEU: 'Germany', DNK: 'Denmark', ESP: 'Spain', EST: 'Estonia',
+  FIN: 'Finland', FRA: 'France', FRO: 'Faroe', GBR: 'United Kingdom',
+  GIB: 'Gibraltar', GRC: 'Greece', GRL: 'Greenland', HRV: 'Croatia',
+  HUN: 'Hungary', IRL: 'Ireland', ISL: 'Iceland', ITA: 'Italy',
+  LTU: 'Lithuania', LUX: 'Luxembourg', LVA: 'Latvia', MCO: 'Monaco',
+  MDA: 'Moldova', MKD: 'Macedonia', MLT: 'Malta', MNE: 'Montenegro',
+  NLD: 'Netherlands', NOR: 'Norway', POL: 'Poland', PRT: 'Portugal',
+  ROU: 'Romania', SRB: 'Serbia', SVK: 'Slovakia', SVN: 'Slovenia',
+  SWE: 'Sweden', UKR: 'Ukraine',
+  ARE: 'United Arab Emirates', ARM: 'Armenia', AZE: 'Azerbaijan',
+  BHR: 'Bahrain', GEO: 'Georgia', IRQ: 'Iraq', ISR: 'Israel',
+  JOR: 'Jordan', KWT: 'Kuwait', OMN: 'Oman', QAT: 'Qatar',
+  SAU: 'Saudi Arabia', TUR: 'Turkey',
+  BEN: 'Benin', BFA: 'Burkina Faso', BWA: 'Botswana',
+  CAF: 'Central African Republic', CIV: 'Ivory Coast', CMR: 'Cameroon',
+  COD: 'Democratic Republic of Congo', COG: 'Republic of Congo',
+  CPV: 'Cape Verde', DZA: 'Algeria', EGY: 'Egypt', GAB: 'Gabon',
+  GHA: 'Ghana', GIN: 'Guinea', GMB: 'Gambia', GNB: 'Guinea-Bissau',
+  KEN: 'Kenya', MAR: 'Morocco', MDG: 'Madagascar', MLI: 'Mali',
+  MOZ: 'Mozambique', MRT: 'Mauritania', MUS: 'Mauritius', MWI: 'Malawi',
+  NER: 'Niger', NGA: 'Nigeria', SEN: 'Senegal', SLE: 'Sierra Leone',
+  SYC: 'Seychelles', TCD: 'Chad', TGO: 'Togo', TUN: 'Tunisia',
+  TZA: 'Tanzania', UGA: 'Uganda', ZAF: 'South Africa',
+  AUS: 'Australia', BGD: 'Bangladesh', CHN: 'China', FJI: 'Fiji',
+  GUM: 'Guam', HKG: 'Hong Kong', IDN: 'Indonesia', IND: 'India',
+  JPN: 'Japan', KAZ: 'Kazakhstan', KGZ: 'Kyrgyzstan', KHM: 'Cambodia',
+  KOR: 'South Korea', LAO: 'Laos', LKA: 'Sri Lanka', MAC: 'Macau',
+  MDV: 'Maldives', MNG: 'Mongolia', MYS: 'Malaysia', NPL: 'Nepal',
+  NZL: 'New Zealand', PAK: 'Pakistan', PHL: 'Philippines',
+  PNG: 'Papua New Guinea', PYF: 'French Polynesia', SGP: 'Singapore',
+  THA: 'Thailand', TWN: 'Taiwan', UZB: 'Uzbekistan', VNM: 'Vietnam',
+  AIA: 'Anguilla', ARG: 'Argentina', ATG: 'Antigua and Barbuda',
+  BES: 'Bonaire, Sint Eustatius and Saba', BHS: 'Bahamas', BLZ: 'Belize',
+  BMU: 'Bermuda', BOL: 'Bolivia', BRA: 'Brazil', BRB: 'Barbados',
+  CAN: 'Canada', CHL: 'Chile', COL: 'Colombia', CRI: 'Costa Rica',
+  CUW: 'Curaçao', CYM: 'Cayman Islands', DMA: 'Dominica',
+  DOM: 'Dominican Republic', ECU: 'Ecuador', GLP: 'Guadeloupe',
+  GRD: 'Grenada', GTM: 'Guatemala', GUF: 'French Guiana',
+  HND: 'Honduras', JAM: 'Jamaica', KNA: 'Saint Kitts and Nevis',
+  LCA: 'Saint Lucia', MAF: 'Saint Martin', MEX: 'Mexico',
+  MSR: 'Montserrat', MTQ: 'Martinique', NIC: 'Nicaragua',
+  PAN: 'Panama', PER: 'Peru', PRI: 'Puerto Rico', PRY: 'Paraguay',
+  PSE: 'Palestine', REU: 'Reunion', SLV: 'El Salvador',
+  SUR: 'Suriname', SXM: 'Sint Maarten', TCA: 'Turks and Caicos Islands',
+  TTO: 'Trinidad and Tobago', URY: 'Uruguay', USA: 'United States of America',
+  VCT: 'Saint Vincent and the Grenadines', VEN: 'Venezuela',
+  VGB: 'British Virgin Islands', VIR: 'U.S. Virgin Islands',
+  AF1: 'Africa 1', AF2: 'Africa 2', ASI: 'Asia', CAR: 'Caribbean',
+  EUR: 'Europe', EUK: 'European Union and UK', GLO: 'Global',
+  LAA: 'Latin America', MEN: 'Middle East and North Africa',
+  NLA: 'Netherlands Antilles', NOA: 'North America', OC1: 'Oceania 1',
 };
 
 pricingRouter.get('/destination-visits', async (req, res) => {
@@ -639,12 +646,11 @@ pricingRouter.get('/destination-visits', async (req, res) => {
       getDestinationVisitsSummary({ startDate: afterFrom,  endDate: afterTo  }),
     ]);
 
-    const toMap = (arr: { destination: string; uniqueVisitors: number }[]) => {
+    const toMap = (arr: { zone: string; uniqueVisitors: number }[]) => {
       const map: Record<string, number> = {};
       for (const v of arr) {
-        const slug = v.destination.replace(/^esim-/, '');
-        const zone = POSTHOG_SLUG_TO_ZONE[slug];
-        if (zone) map[zone] = v.uniqueVisitors;
+        const name = ISO_TO_ZONE_NAME[v.zone];
+        if (name) map[name] = v.uniqueVisitors;
       }
       return map;
     };

@@ -8,7 +8,7 @@ export interface DestinationVisitsParams {
 }
 
 export interface DestinationVisitSummary {
-  destination: string; // "esim-france", "esim-morocco", etc.
+  zone: string;       // ISO alpha-3 code, e.g. "FRA", "DEU"
   uniqueVisitors: number;
 }
 
@@ -39,22 +39,22 @@ export async function getDestinationVisitsSummary(
 
   const query = `
     SELECT
-      extract(properties.$pathname, 'destinations/(esim-[^/?#]+)') AS destination,
-      count(DISTINCT person_id)                                      AS unique_visitors
+      properties.plan_zone        AS zone,
+      count(DISTINCT person_id)   AS unique_visitors
     FROM events
     WHERE
-      event = '$pageview'
-      AND properties.$pathname ILIKE '%/destinations/esim-%'
+      event = 'plan_purchase:zone_validated'
       AND toDate(timestamp) >= toDate('${startDate}')
       ${endDate ? `AND toDate(timestamp) <= toDate('${endDate}')` : ""}
-      AND extract(properties.$pathname, 'destinations/(esim-[^/?#]+)') != ''
-    GROUP BY destination
+      AND properties.plan_zone IS NOT NULL
+      AND properties.plan_zone != ''
+    GROUP BY zone
     ORDER BY unique_visitors DESC
   `;
 
   const rows = await runHogQL(query);
-  return (rows as [string, number][]).map(([destination, uniqueVisitors]) => ({
-    destination,
+  return (rows as [string, number][]).map(([zone, uniqueVisitors]) => ({
+    zone,
     uniqueVisitors,
   }));
 }
