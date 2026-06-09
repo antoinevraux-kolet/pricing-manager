@@ -424,6 +424,447 @@ export default function ComparisonTable() {
   const hasData   = mode === 'comparison' ? !!comp2Data  : !!obsData;
   const planCount = (mode === 'comparison' ? compFiltered : obsFiltered).length;
 
+  // ── Grand totals (all visible plans, aggregated across all countries) ─────
+  const gtComp = compFiltered.reduce((s, r) => ({
+    ordersBefore:   s.ordersBefore   + r.ordersBefore,
+    ordersAfter:    s.ordersAfter    + r.ordersAfter,
+    catRevBefore:   s.catRevBefore   + r.catalogRevBefore,
+    catRevAfter:    s.catRevAfter    + r.catalogRevAfter,
+    discBefore:     s.discBefore     + r.discountBefore,
+    discAfter:      s.discAfter      + r.discountAfter,
+    grossRevBefore: s.grossRevBefore + r.grossRevBefore,
+    grossRevAfter:  s.grossRevAfter  + r.grossRevAfter,
+    netRevBefore:   s.netRevBefore   + r.netRevBefore,
+    netRevAfter:    s.netRevAfter    + r.netRevAfter,
+    costBefore:     s.costBefore     + r.totalCostBefore,
+    costAfter:      s.costAfter      + r.totalCostAfter,
+  }), { ordersBefore: 0, ordersAfter: 0, catRevBefore: 0, catRevAfter: 0, discBefore: 0, discAfter: 0, grossRevBefore: 0, grossRevAfter: 0, netRevBefore: 0, netRevAfter: 0, costBefore: 0, costAfter: 0 });
+
+  const gtObs = obsFiltered.reduce((s, r) => ({
+    orders:   s.orders   + r.orders,
+    catRev:   s.catRev   + r.catalogRev,
+    disc:     s.disc     + r.discount,
+    grossRev: s.grossRev + r.grossRev,
+    netRev:   s.netRev   + r.netRev,
+    cost:     s.cost     + r.totalCost,
+  }), { orders: 0, catRev: 0, disc: 0, grossRev: 0, netRev: 0, cost: 0 });
+
+  const gtVisitsBefore = visitsData    ? Object.values(visitsData.before).reduce((a, b) => a + b, 0)    : null;
+  const gtVisitsAfter  = visitsData    ? Object.values(visitsData.after).reduce((a, b) => a + b, 0)     : null;
+  const gtVisitsObs    = visitsObsData ? Object.values(visitsObsData.visits).reduce((a, b) => a + b, 0) : null;
+
+  const [exporting, setExporting] = useState(false);
+
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const { Workbook } = await import('exceljs');
+      const wb = new Workbook();
+      wb.creator = 'Kolet Pricing Manager';
+
+      const ws = wb.addWorksheet(mode === 'comparison' ? 'Comparison' : 'Observation');
+
+      const solid = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } });
+      const fnt   = (argb: string, bold = false, sz = 11) => ({ color: { argb }, bold, size: sz });
+      const thinBorder = {
+        top:    { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+        left:   { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+        bottom: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+        right:  { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+      };
+
+      const pDelta = (b: number | null, a: number | null) => {
+        if (b == null || a == null || b === 0) return null;
+        return Math.round((a - b) / Math.abs(b) * 1000) / 10;
+      };
+      const absDelta = (b: number | null, a: number | null) => {
+        if (b == null || a == null) return null;
+        return Math.round((a - b) * 1000) / 10;
+      };
+
+      const mgnArgb = (ratio: number | null): string => {
+        if (ratio == null) return 'FFFFFFFF';
+        type RGB = [number, number, number];
+        const stops: [number, RGB][] = [
+          [0,     [185,  28,  28]],
+          [0.25,  [234,  88,  12]],
+          [0.50,  [202, 138,   4]],
+          [0.625, [101, 163,  13]],
+          [0.75,  [ 21, 128,  61]],
+        ];
+        let [r, g, b] = stops[0][1];
+        if (ratio >= 0.75) { [r, g, b] = stops[4][1]; }
+        else if (ratio > 0) {
+          for (let i = 0; i < stops.length - 1; i++) {
+            const [r0, c0] = stops[i], [r1, c1] = stops[i + 1];
+            if (ratio >= r0 && ratio <= r1) {
+              const t = (ratio - r0) / (r1 - r0);
+              r = Math.round(c0[0] + t * (c1[0] - c0[0]));
+              g = Math.round(c0[1] + t * (c1[1] - c0[1]));
+              b = Math.round(c0[2] + t * (c1[2] - c0[2]));
+              break;
+            }
+          }
+        }
+        return 'FF' + [r, g, b].map(v => v.toString(16).padStart(2, '0').toUpperCase()).join('');
+      };
+
+      const DARK = 'FF1E293B';
+      const WHITE = 'FFF8FAFC';
+
+      const H = {
+        priceEur:     { bg: 'FFF9FAFB', fg: 'FF374151' },
+        priceUsd:     { bg: 'FFFAFAF5', fg: 'FF78350F' },
+        visitors:     { bg: 'FFFFF1F2', fg: 'FFBE185D' },
+        orders:       { bg: 'FFEFF6FF', fg: 'FF1D4ED8' },
+        catalogRev:   { bg: 'FFFFFBEB', fg: 'FF92400E' },
+        discount:     { bg: 'FFFFF1F2', fg: 'FF9F1239' },
+        grossRev:     { bg: 'FFF0FDF4', fg: 'FF15803D' },
+        netRev:       { bg: 'FFF0FDFA', fg: 'FF0F766E' },
+        netAov:       { bg: 'FFF0F9FF', fg: 'FF0369A1' },
+        totalCost:    { bg: 'FFFFF7ED', fg: 'FFC2410C' },
+        marginEur:    { bg: 'FFECFDF5', fg: 'FF065F46' },
+        netMarginPct: { bg: 'FFF5F3FF', fg: 'FF6D28D9' },
+      };
+
+      const metrics = [
+        { label: 'Price EUR',              hdr: H.priceEur,     absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Price USD',              hdr: H.priceUsd,     absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Unique Visitors',        hdr: H.visitors,     absPts: false, isMgn: false, numFmt: '#,##0'    },
+        { label: 'Orders',                 hdr: H.orders,       absPts: false, isMgn: false, numFmt: '#,##0'    },
+        { label: 'Catalog Rev (EUR)',       hdr: H.catalogRev,   absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Discount & Koins (EUR)', hdr: H.discount,     absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Gross Rev (EUR)',         hdr: H.grossRev,     absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Net Rev (EUR)',           hdr: H.netRev,       absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Net AOV (EUR)',           hdr: H.netAov,       absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Total COGS (EUR)',        hdr: H.totalCost,    absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Margin (EUR)',            hdr: H.marginEur,    absPts: false, isMgn: false, numFmt: '#,##0.00' },
+        { label: 'Margin (%)',              hdr: H.netMarginPct, absPts: true,  isMgn: true,  numFmt: '0.0'      },
+      ];
+
+      // ── Context rows ────────────────────────────────────────────────────
+      {
+        const r = ws.addRow(['Kolet Pricing Manager — ' + (mode === 'comparison' ? 'Comparison' : 'Observation')]);
+        r.getCell(1).font = { bold: true, size: 14 };
+      }
+      if (mode === 'comparison' && comp2Data) {
+        ws.addRow(['Before period', `${comp2Data.beforeFrom} → ${comp2Data.beforeTo}`]).getCell(1).font = { bold: true };
+        ws.addRow(['After period',  `${comp2Data.afterFrom} → ${comp2Data.afterTo}`]).getCell(1).font   = { bold: true };
+        ws.addRow(['Duration',      `${comp2Data.nDays} days each`]).getCell(1).font = { bold: true };
+      } else if (mode === 'observation' && obsData) {
+        ws.addRow(['Period', `${obsData.from} → ${obsData.to}`]).getCell(1).font = { bold: true };
+      }
+      if (filterGb !== 'all') ws.addRow(['Plan filter', `${filterGb} GB`]).getCell(1).font = { bold: true };
+      ws.addRow(['Exported on', new Date().toISOString().slice(0, 10)]).getCell(1).font = { bold: true };
+      ws.addRow([]);
+
+      if (mode === 'comparison') {
+        // ── Comparison header rows ────────────────────────────────────────
+        const hdr1 = ws.addRow(['Country', 'Plan']);
+        hdr1.height = 22;
+        hdr1.getCell(1).fill = solid(DARK); hdr1.getCell(1).font = fnt(WHITE, true);
+        hdr1.getCell(2).fill = solid(DARK); hdr1.getCell(2).font = fnt(WHITE, true);
+
+        const hdr2 = ws.addRow(['', '']);
+        hdr2.height = 16;
+        hdr2.getCell(1).fill = solid(DARK);
+        hdr2.getCell(2).fill = solid(DARK);
+
+        metrics.forEach((m, i) => {
+          const col = 3 + i * 3;
+          ws.mergeCells(hdr1.number, col, hdr1.number, col + 2);
+          const h1c = hdr1.getCell(col);
+          h1c.value = m.label;
+          h1c.fill = solid(m.hdr.bg);
+          h1c.font = fnt(m.hdr.fg, true);
+          h1c.alignment = { horizontal: 'center', vertical: 'middle' };
+
+          ['Before', 'After', m.absPts ? 'Δ pts' : 'Δ %'].forEach((sub, j) => {
+            const c = hdr2.getCell(col + j);
+            c.value = sub;
+            c.fill = solid(m.hdr.bg);
+            c.font = fnt(m.hdr.fg, true, 9);
+            c.alignment = { horizontal: 'right' };
+          });
+        });
+
+        const frozenAt = ws.rowCount;
+
+        type CompVals = {
+          pEurB: number | null; pEurA: number | null;
+          pUsdB: number | null; pUsdA: number | null;
+          visB:  number | null; visA:  number | null;
+          ordB: number;  ordA: number;
+          catB: number;  catA: number;
+          disB: number;  disA: number;
+          grvB: number;  grvA: number;
+          nrvB: number;  nrvA: number;
+          navB: number | null; navA: number | null;
+          cstB: number;  cstA: number;
+          meuB: number;  meuA: number;
+          mpcB: number | null; mpcA: number | null;
+        };
+
+        const addCRow = (country: string, plan: string, v: CompVals, opts: { bold?: boolean; bg?: string } = {}) => {
+          const rawB = [v.pEurB, v.pUsdB, v.visB, v.ordB, v.catB, v.disB, v.grvB, v.nrvB, v.navB, v.cstB, v.meuB, v.mpcB];
+          const rawA = [v.pEurA, v.pUsdA, v.visA, v.ordA, v.catA, v.disA, v.grvA, v.nrvA, v.navA, v.cstA, v.meuA, v.mpcA];
+          const dispB = rawB.map((val, i) => (metrics[i].isMgn && val != null) ? Math.round(val * 1000) / 10 : val);
+          const dispA = rawA.map((val, i) => (metrics[i].isMgn && val != null) ? Math.round(val * 1000) / 10 : val);
+
+          const rowData: (string | number | null)[] = [country, plan];
+          metrics.forEach((m, i) => {
+            rowData.push(dispB[i], dispA[i], m.absPts ? absDelta(rawB[i], rawA[i]) : pDelta(rawB[i], rawA[i]));
+          });
+
+          const row = ws.addRow(rowData);
+          row.height = opts.bold ? 18 : 16;
+
+          const rowBg = opts.bg ?? 'FFFFFFFF';
+          const isD = rowBg === DARK;
+          [1, 2].forEach(ci => {
+            row.getCell(ci).fill = solid(rowBg);
+            if (opts.bold) row.getCell(ci).font = { bold: true, color: { argb: isD ? WHITE : 'FF1F2937' } };
+          });
+
+          metrics.forEach((m, i) => {
+            const col = 3 + i * 3;
+            [0, 1, 2].forEach(j => {
+              const c = row.getCell(col + j);
+              c.border = thinBorder;
+              c.alignment = { horizontal: 'right' };
+              if (j < 2) c.numFmt = m.numFmt;
+              else c.numFmt = '0.0';
+
+              if (isD) {
+                c.fill = solid(DARK);
+                c.font = { bold: true, color: { argb: WHITE } };
+              } else if (m.isMgn && j < 2) {
+                const ratio = j === 0 ? v.mpcB : v.mpcA;
+                if (ratio != null) {
+                  c.fill = solid(mgnArgb(ratio));
+                  c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                } else {
+                  c.fill = solid(m.hdr.bg);
+                }
+              } else {
+                c.fill = solid(m.hdr.bg);
+                if (opts.bold && j < 2) c.font = { bold: true };
+              }
+            });
+          });
+
+          return row;
+        };
+
+        // Grand total
+        if (!search) {
+          const gtNavB = gtComp.ordersBefore > 0 ? gtComp.netRevBefore / gtComp.ordersBefore : null;
+          const gtNavA = gtComp.ordersAfter  > 0 ? gtComp.netRevAfter  / gtComp.ordersAfter  : null;
+          const gtMeuB = gtComp.netRevBefore - gtComp.costBefore;
+          const gtMeuA = gtComp.netRevAfter  - gtComp.costAfter;
+          addCRow('ALL COUNTRIES', '—', {
+            pEurB: null, pEurA: null, pUsdB: null, pUsdA: null,
+            visB: gtVisitsBefore, visA: gtVisitsAfter,
+            ordB: gtComp.ordersBefore, ordA: gtComp.ordersAfter,
+            catB: gtComp.catRevBefore, catA: gtComp.catRevAfter,
+            disB: gtComp.discBefore,   disA: gtComp.discAfter,
+            grvB: gtComp.grossRevBefore, grvA: gtComp.grossRevAfter,
+            nrvB: gtComp.netRevBefore,   nrvA: gtComp.netRevAfter,
+            navB: gtNavB, navA: gtNavA,
+            cstB: gtComp.costBefore,   cstA: gtComp.costAfter,
+            meuB: gtMeuB, meuA: gtMeuA,
+            mpcB: gtComp.netRevBefore > 0 ? gtMeuB / gtComp.netRevBefore : null,
+            mpcA: gtComp.netRevAfter  > 0 ? gtMeuA / gtComp.netRevAfter  : null,
+          }, { bg: DARK, bold: true });
+        }
+
+        // Countries
+        for (const zone of sortedZones) {
+          const zRows = compGrouped[zone];
+          const cRow = ws.addRow([zoneLabel(zone)]);
+          ws.mergeCells(cRow.number, 1, cRow.number, 2 + metrics.length * 3);
+          cRow.getCell(1).fill = solid('FF312E81');
+          cRow.getCell(1).font = fnt(WHITE, true);
+          cRow.height = 20;
+
+          for (const r of zRows) {
+            const nAvB = r.ordersBefore > 0 ? r.netRevBefore / r.ordersBefore : null;
+            const nAvA = r.ordersAfter  > 0 ? r.netRevAfter  / r.ordersAfter  : null;
+            const mEuB = r.netRevBefore - r.totalCostBefore;
+            const mEuA = r.netRevAfter  - r.totalCostAfter;
+            addCRow('', r.dataGb, {
+              pEurB: r.priceBeforeEur, pEurA: r.priceAfterEur,
+              pUsdB: r.priceBeforeUsd, pUsdA: r.priceAfterUsd,
+              visB: null, visA: null,
+              ordB: r.ordersBefore, ordA: r.ordersAfter,
+              catB: r.catalogRevBefore, catA: r.catalogRevAfter,
+              disB: r.discountBefore,   disA: r.discountAfter,
+              grvB: r.grossRevBefore,   grvA: r.grossRevAfter,
+              nrvB: r.netRevBefore,     nrvA: r.netRevAfter,
+              navB: nAvB, navA: nAvA,
+              cstB: r.totalCostBefore,  cstA: r.totalCostAfter,
+              meuB: mEuB, meuA: mEuA,
+              mpcB: r.netRevBefore > 0 ? mEuB / r.netRevBefore : null,
+              mpcA: r.netRevAfter  > 0 ? mEuA / r.netRevAfter  : null,
+            });
+          }
+
+          const sOrdB = zRows.reduce((s, r) => s + r.ordersBefore, 0);
+          const sOrdA = zRows.reduce((s, r) => s + r.ordersAfter,  0);
+          const sNrvB = zRows.reduce((s, r) => s + r.netRevBefore, 0);
+          const sNrvA = zRows.reduce((s, r) => s + r.netRevAfter,  0);
+          const sCstB = zRows.reduce((s, r) => s + r.totalCostBefore, 0);
+          const sCstA = zRows.reduce((s, r) => s + r.totalCostAfter,  0);
+          const sMeuB = sNrvB - sCstB;
+          const sMeuA = sNrvA - sCstA;
+          addCRow('', 'Total', {
+            pEurB: null, pEurA: null, pUsdB: null, pUsdA: null,
+            visB: visitsData?.before[zone] ?? null, visA: visitsData?.after[zone] ?? null,
+            ordB: sOrdB, ordA: sOrdA,
+            catB: zRows.reduce((s, r) => s + r.catalogRevBefore, 0), catA: zRows.reduce((s, r) => s + r.catalogRevAfter, 0),
+            disB: zRows.reduce((s, r) => s + r.discountBefore,   0), disA: zRows.reduce((s, r) => s + r.discountAfter,   0),
+            grvB: zRows.reduce((s, r) => s + r.grossRevBefore,   0), grvA: zRows.reduce((s, r) => s + r.grossRevAfter,   0),
+            nrvB: sNrvB, nrvA: sNrvA,
+            navB: sOrdB > 0 ? sNrvB / sOrdB : null, navA: sOrdA > 0 ? sNrvA / sOrdA : null,
+            cstB: sCstB, cstA: sCstA,
+            meuB: sMeuB, meuA: sMeuA,
+            mpcB: sNrvB > 0 ? sMeuB / sNrvB : null, mpcA: sNrvA > 0 ? sMeuA / sNrvA : null,
+          }, { bold: true });
+        }
+
+        ws.getColumn(1).width = 24;
+        ws.getColumn(2).width = 10;
+        for (let i = 0; i < metrics.length; i++) {
+          ws.getColumn(3 + i * 3 + 0).width = 13;
+          ws.getColumn(3 + i * 3 + 1).width = 13;
+          ws.getColumn(3 + i * 3 + 2).width = 9;
+        }
+        ws.views = [{ state: 'frozen', xSplit: 2, ySplit: frozenAt }];
+
+      } else {
+        // ── Observation header ────────────────────────────────────────────
+        const hdr = ws.addRow(['Country', 'Plan', ...metrics.map(m => m.label)]);
+        hdr.height = 22;
+        hdr.getCell(1).fill = solid(DARK); hdr.getCell(1).font = fnt(WHITE, true);
+        hdr.getCell(2).fill = solid(DARK); hdr.getCell(2).font = fnt(WHITE, true);
+        metrics.forEach((m, i) => {
+          const c = hdr.getCell(3 + i);
+          c.fill = solid(m.hdr.bg);
+          c.font = fnt(m.hdr.fg, true);
+          c.alignment = { horizontal: 'center' };
+        });
+
+        const frozenAt = ws.rowCount;
+
+        type ObsVals = {
+          pEur: number | null; pUsd: number | null; vis: number | null;
+          ord: number; cat: number; dis: number; grv: number; nrv: number;
+          nav: number | null; cst: number; meu: number; mpc: number | null;
+        };
+
+        const addORow = (country: string, plan: string, v: ObsVals, opts: { bold?: boolean; bg?: string } = {}) => {
+          const dispMpc = v.mpc != null ? Math.round(v.mpc * 1000) / 10 : null;
+          const rowData = [country, plan, v.pEur, v.pUsd, v.vis, v.ord, v.cat, v.dis, v.grv, v.nrv, v.nav, v.cst, v.meu, dispMpc];
+          const row = ws.addRow(rowData);
+          row.height = opts.bold ? 18 : 16;
+
+          const rowBg = opts.bg ?? 'FFFFFFFF';
+          const isD = rowBg === DARK;
+          [1, 2].forEach(ci => {
+            row.getCell(ci).fill = solid(rowBg);
+            if (opts.bold) row.getCell(ci).font = { bold: true, color: { argb: isD ? WHITE : 'FF1F2937' } };
+          });
+
+          metrics.forEach((m, i) => {
+            const c = row.getCell(3 + i);
+            c.border = thinBorder;
+            c.alignment = { horizontal: 'right' };
+            c.numFmt = m.numFmt;
+            if (isD) {
+              c.fill = solid(DARK);
+              c.font = { bold: true, color: { argb: WHITE } };
+            } else if (m.isMgn && v.mpc != null) {
+              c.fill = solid(mgnArgb(v.mpc));
+              c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            } else {
+              c.fill = solid(m.hdr.bg);
+              if (opts.bold) c.font = { bold: true };
+            }
+          });
+        };
+
+        // Grand total
+        if (!search) {
+          const gtMeu = gtObs.netRev - gtObs.cost;
+          addORow('ALL COUNTRIES', '—', {
+            pEur: null, pUsd: null, vis: gtVisitsObs,
+            ord: gtObs.orders, cat: gtObs.catRev, dis: gtObs.disc,
+            grv: gtObs.grossRev, nrv: gtObs.netRev,
+            nav: gtObs.orders > 0 ? gtObs.netRev / gtObs.orders : null,
+            cst: gtObs.cost, meu: gtMeu,
+            mpc: gtObs.netRev > 0 ? gtMeu / gtObs.netRev : null,
+          }, { bg: DARK, bold: true });
+        }
+
+        // Countries
+        for (const zone of sortedZones) {
+          const zRows = obsGrouped[zone];
+          const cRow = ws.addRow([zoneLabel(zone)]);
+          ws.mergeCells(cRow.number, 1, cRow.number, 2 + metrics.length);
+          cRow.getCell(1).fill = solid('FF312E81');
+          cRow.getCell(1).font = fnt(WHITE, true);
+          cRow.height = 20;
+
+          for (const r of zRows) {
+            const nav = r.orders > 0 ? r.netRev / r.orders : null;
+            const meu = r.netRev - r.totalCost;
+            addORow('', r.dataGb, {
+              pEur: r.priceEur, pUsd: r.priceUsd, vis: null,
+              ord: r.orders, cat: r.catalogRev, dis: r.discount,
+              grv: r.grossRev, nrv: r.netRev, nav, cst: r.totalCost, meu,
+              mpc: r.netRev > 0 ? meu / r.netRev : null,
+            });
+          }
+
+          const sOrd = zRows.reduce((s, r) => s + r.orders,     0);
+          const sNrv = zRows.reduce((s, r) => s + r.netRev,     0);
+          const sCst = zRows.reduce((s, r) => s + r.totalCost,  0);
+          const sMeu = sNrv - sCst;
+          addORow('', 'Total', {
+            pEur: null, pUsd: null,
+            vis: visitsObsData?.visits[zone] ?? null,
+            ord: sOrd,
+            cat: zRows.reduce((s, r) => s + r.catalogRev, 0),
+            dis: zRows.reduce((s, r) => s + r.discount,   0),
+            grv: zRows.reduce((s, r) => s + r.grossRev,   0),
+            nrv: sNrv,
+            nav: sOrd > 0 ? sNrv / sOrd : null,
+            cst: sCst, meu: sMeu,
+            mpc: sNrv > 0 ? sMeu / sNrv : null,
+          }, { bold: true });
+        }
+
+        ws.getColumn(1).width = 24;
+        ws.getColumn(2).width = 10;
+        for (let i = 0; i < metrics.length; i++) ws.getColumn(3 + i).width = 15;
+        ws.views = [{ state: 'frozen', xSplit: 2, ySplit: frozenAt }];
+      }
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer as ArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `kolet-pricing-${mode}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const METRICS: { key: GroupKey; emoji: string; name: string; def: string; calc: string }[] = [
     { key: 'priceEur',     emoji: '💶', name: 'Price EUR',              def: 'Average catalog price paid by EUR-currency buyers (exchange rate = 1).', calc: 'AVG(effective_price_eur) on orders where exchange rate ≈ 1' },
     { key: 'priceUsd',     emoji: '💵', name: 'Price USD',              def: 'Average catalog price in USD: EUR catalog price × exchange rate in effect at purchase time, rounded. Rates may vary across the period.', calc: 'AVG(catalog_price_eur_or_usd) on USD-currency orders' },
@@ -520,6 +961,9 @@ export default function ComparisonTable() {
             {allGbs.map(gb => <option key={gb} value={gb}>{gb} GB</option>)}
           </select>
           <span className={styles.planCount}>{planCount} plans · {sortedZones.length} countries</span>
+          <button className={styles.exportBtn} onClick={exportXlsx} disabled={exporting || !hasData}>
+            {exporting ? 'Exporting…' : '↓ Export XLSX'}
+          </button>
         </div>
       </div>
 
@@ -563,6 +1007,41 @@ export default function ComparisonTable() {
               )}
             </thead>
             <tbody>
+              {/* Grand total row — hidden when search is active */}
+              {!search && mode === 'comparison' && (
+                <tr className={styles.grandTotalRow}>
+                  <td className={styles.grandTotalCell}>ALL COUNTRIES</td>
+                  {isOpen('priceEur')  ? <><td className={`${styles.grandTotalMetric} ${styles.priceHdr} ${styles.groupStartCell}`}/><td className={`${styles.grandTotalMetric} ${styles.priceHdr}`}/><td className={`${styles.grandTotalMetric} ${styles.priceHdr}`}/></> : <td className={`${styles.collapsedCell} ${styles.priceHdr} ${styles.groupStartCell}`}/>}
+                  {isOpen('priceUsd')  ? <><td className={`${styles.grandTotalMetric} ${styles.priceUsdHdr} ${styles.groupStartCell}`}/><td className={`${styles.grandTotalMetric} ${styles.priceUsdHdr}`}/><td className={`${styles.grandTotalMetric} ${styles.priceUsdHdr}`}/></> : <td className={`${styles.collapsedCell} ${styles.priceUsdHdr} ${styles.groupStartCell}`}/>}
+                  <GroupCells groupKey="visitors"     hdrClass={styles.visitorsHdr}    beforeVal={gtVisitsBefore}           afterVal={gtVisitsAfter}           fmt={v => v.toLocaleString('en-US')} />
+                  <GroupCells groupKey="orders"       hdrClass={styles.ordersHdr}      beforeVal={gtComp.ordersBefore}      afterVal={gtComp.ordersAfter}      fmt={v => v.toLocaleString('en-US')} />
+                  <GroupCells groupKey="catalogRev"   hdrClass={styles.catalogRevHdr}  beforeVal={gtComp.catRevBefore}      afterVal={gtComp.catRevAfter}      prefix="€" />
+                  <GroupCells groupKey="discount"     hdrClass={styles.discountHdr}    beforeVal={gtComp.discBefore}        afterVal={gtComp.discAfter}        prefix="€" positiveIsGood={false} />
+                  <GroupCells groupKey="grossRev"     hdrClass={styles.grossRevHdr}    beforeVal={gtComp.grossRevBefore}    afterVal={gtComp.grossRevAfter}    prefix="€" />
+                  <GroupCells groupKey="netRev"       hdrClass={styles.netRevHdr}      beforeVal={gtComp.netRevBefore}      afterVal={gtComp.netRevAfter}      prefix="€" />
+                  <GroupCells groupKey="netAov"       hdrClass={styles.netAovHdr}      beforeVal={gtComp.ordersBefore > 0 ? gtComp.netRevBefore / gtComp.ordersBefore : null} afterVal={gtComp.ordersAfter > 0 ? gtComp.netRevAfter / gtComp.ordersAfter : null} prefix="€" />
+                  <GroupCells groupKey="totalCost"    hdrClass={styles.totalCostHdr}   beforeVal={gtComp.costBefore}        afterVal={gtComp.costAfter}        prefix="€" positiveIsGood={false} />
+                  <GroupCells groupKey="marginEur"    hdrClass={styles.marginEurHdr}   beforeVal={gtComp.netRevBefore - gtComp.costBefore} afterVal={gtComp.netRevAfter - gtComp.costAfter} prefix="€" />
+                  <GroupCells groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} beforeVal={gtComp.netRevBefore > 0 ? (gtComp.netRevBefore - gtComp.costBefore) / gtComp.netRevBefore : null} afterVal={gtComp.netRevAfter > 0 ? (gtComp.netRevAfter - gtComp.costAfter) / gtComp.netRevAfter : null} fmt={v => (v * 100).toFixed(1) + '%'} deltaMode="absPts" styleVal={v => ({ background: marginColor(v), color: '#fff', fontWeight: '700' })} />
+                </tr>
+              )}
+              {!search && mode === 'observation' && (
+                <tr className={styles.grandTotalRow}>
+                  <td className={styles.grandTotalCell}>ALL COUNTRIES</td>
+                  {isOpen('priceEur')  ? <td className={`${styles.grandTotalMetric} ${styles.priceHdr} ${styles.groupStartCell}`}/>    : <td className={`${styles.collapsedCell} ${styles.priceHdr} ${styles.groupStartCell}`}/>}
+                  {isOpen('priceUsd')  ? <td className={`${styles.grandTotalMetric} ${styles.priceUsdHdr} ${styles.groupStartCell}`}/> : <td className={`${styles.collapsedCell} ${styles.priceUsdHdr} ${styles.groupStartCell}`}/>}
+                  <GroupCellObs groupKey="visitors"     hdrClass={styles.visitorsHdr}    val={gtVisitsObs}   fmtFn={v => v.toLocaleString('en-US')} />
+                  <GroupCellObs groupKey="orders"       hdrClass={styles.ordersHdr}      val={gtObs.orders}   fmtFn={v => v.toLocaleString('en-US')} />
+                  <GroupCellObs groupKey="catalogRev"   hdrClass={styles.catalogRevHdr}  val={gtObs.catRev}   prefix="€" />
+                  <GroupCellObs groupKey="discount"     hdrClass={styles.discountHdr}    val={gtObs.disc}     prefix="€" />
+                  <GroupCellObs groupKey="grossRev"     hdrClass={styles.grossRevHdr}    val={gtObs.grossRev} prefix="€" />
+                  <GroupCellObs groupKey="netRev"       hdrClass={styles.netRevHdr}      val={gtObs.netRev}   prefix="€" />
+                  <GroupCellObs groupKey="netAov"       hdrClass={styles.netAovHdr}      val={gtObs.orders > 0 ? gtObs.netRev / gtObs.orders : null} prefix="€" />
+                  <GroupCellObs groupKey="totalCost"    hdrClass={styles.totalCostHdr}   val={gtObs.cost}     prefix="€" />
+                  <GroupCellObs groupKey="marginEur"    hdrClass={styles.marginEurHdr}   val={gtObs.netRev - gtObs.cost} prefix="€" />
+                  <GroupCellObs groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} val={gtObs.netRev > 0 ? (gtObs.netRev - gtObs.cost) / gtObs.netRev : null} fmtFn={v => (v * 100).toFixed(1) + '%'} styleVal={v => ({ background: marginColor(v), color: '#fff', fontWeight: '700' })} />
+                </tr>
+              )}
               {mode === 'comparison' ? sortedZones.map((zone, rank) => {
                 const zoneRows         = compGrouped[zone];
                 const sumOrdersBefore  = zoneRows.reduce((s, r) => s + r.ordersBefore,     0);
