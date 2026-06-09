@@ -224,7 +224,7 @@ function DeltaBadge({ delta, positiveIsGood = true, unit = '%' }: { delta: numbe
   return <span className={good ? styles.positive : styles.negative}>{sign}{delta.toFixed(1)}{unit}</span>;
 }
 
-type GroupKey = 'priceEur' | 'priceUsd' | 'visitors' | 'orders' | 'catalogRev' | 'discount' | 'grossRev' | 'netRev' | 'netAov' | 'totalCost' | 'netMarginPct';
+type GroupKey = 'priceEur' | 'priceUsd' | 'visitors' | 'orders' | 'catalogRev' | 'discount' | 'grossRev' | 'netRev' | 'netAov' | 'totalCost' | 'marginEur' | 'netMarginPct';
 
 function ColInfo({ text }: { text: string }) {
   return (
@@ -320,7 +320,7 @@ export default function ComparisonTable() {
   });
   const isOpen = (key: GroupKey) => !collapsed.has(key);
 
-  const KEYS: GroupKey[] = ['priceEur', 'priceUsd', 'visitors', 'orders', 'catalogRev', 'discount', 'grossRev', 'netRev', 'netAov', 'totalCost', 'netMarginPct'];
+  const KEYS: GroupKey[] = ['priceEur', 'priceUsd', 'visitors', 'orders', 'catalogRev', 'discount', 'grossRev', 'netRev', 'netAov', 'totalCost', 'marginEur', 'netMarginPct'];
   const NCOLS = mode === 'comparison'
     ? 1 + KEYS.reduce((s, k) => s + (isOpen(k) ? 3 : 1), 0)
     : 1 + KEYS.length;
@@ -409,7 +409,8 @@ export default function ComparisonTable() {
     { key: 'netRev',       emoji: '💳', name: 'Net Rev (EUR)',           def: 'Revenue after discounts and Koins, excluding VAT. Primary revenue metric for margin analysis.', calc: 'SUM(net_effective_price_eur)' },
     { key: 'netAov',       emoji: '🧮', name: 'Net AOV (EUR)',           def: 'Average net order value excluding VAT.', calc: 'Net Revenue ÷ Orders' },
     { key: 'totalCost',    emoji: '⚙️', name: 'Total COGS (EUR)',        def: 'Cost of goods sold: payment fees + network costs allocated per sale. ⚠ For periods < 30 days ago, costs may still increase as consumption finalizes.', calc: 'SUM(payment_fees_allocated_eur + network_cost_allocated_eur)' },
-    { key: 'netMarginPct', emoji: '📈', name: 'Margin',                  def: 'Net profit margin. In comparison mode, the delta is shown in percentage points (not % change).', calc: '(Net Revenue − COGS) ÷ Net Revenue × 100%' },
+    { key: 'marginEur',    emoji: '🟢', name: 'Margin (EUR)',            def: 'Absolute gross margin in euros: net revenue minus total cost of goods sold. A positive value means the sale is profitable after fees and network costs.', calc: 'Net Revenue − Total COGS' },
+    { key: 'netMarginPct', emoji: '📈', name: 'Margin (%)',              def: 'Net profit margin as a percentage of net revenue. In comparison mode, the delta is shown in percentage points (not % change).', calc: '(Net Revenue − COGS) ÷ Net Revenue × 100%' },
   ];
 
   return (
@@ -515,7 +516,8 @@ export default function ComparisonTable() {
                 <GroupHeader groupKey="netRev"       hdrClass={styles.netRevHdr}       label="💳 NET REV (EUR)"          info="SUM(net_effective_price_eur) — excl. VAT, after discounts and Koins"                obsMode={mode === 'observation'} />
                 <GroupHeader groupKey="netAov"       hdrClass={styles.netAovHdr}       label="🧮 NET AOV (EUR)"          info="Net Revenue / Orders — avg net order value excl. VAT"                               obsMode={mode === 'observation'} />
                 <GroupHeader groupKey="totalCost"    hdrClass={styles.totalCostHdr}    label="⚙️ TOTAL COGS (EUR)"       info="SUM(payment fees + network cost allocated to each sale). ⚠ For periods less than 30 days ago, data may still be in consumption — costs can increase. Use a period older than 30 days for reliable margin analysis."  obsMode={mode === 'observation'} />
-                <GroupHeader groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} label="📈 MARGIN"                 info="(Net Revenue − COGS) / Net Revenue — delta shown in percentage points"              obsMode={mode === 'observation'} />
+                <GroupHeader groupKey="marginEur"    hdrClass={styles.marginEurHdr}    label="🟢 MARGIN (EUR)"           info="Net Revenue − Total COGS — absolute margin in euros. Positive = profitable after fees and network costs."                                                                             obsMode={mode === 'observation'} />
+                <GroupHeader groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} label="📈 MARGIN (%)"             info="(Net Revenue − COGS) / Net Revenue — delta shown in percentage points"              obsMode={mode === 'observation'} />
               </tr>
               {mode === 'comparison' && (
                 <tr>
@@ -529,6 +531,7 @@ export default function ComparisonTable() {
                   {isOpen('netRev')       && <><th className={`${styles.subBefore} ${styles.netRevHdr}`}>Before</th><th className={`${styles.subAfter} ${styles.netRevHdr}`}>After</th><th className={`${styles.subDelta} ${styles.netRevHdr}`}>Δ</th></>}
                   {isOpen('netAov')       && <><th className={`${styles.subBefore} ${styles.netAovHdr}`}>Before</th><th className={`${styles.subAfter} ${styles.netAovHdr}`}>After</th><th className={`${styles.subDelta} ${styles.netAovHdr}`}>Δ</th></>}
                   {isOpen('totalCost')    && <><th className={`${styles.subBefore} ${styles.totalCostHdr}`}>Before</th><th className={`${styles.subAfter} ${styles.totalCostHdr}`}>After</th><th className={`${styles.subDelta} ${styles.totalCostHdr}`}>Δ</th></>}
+                  {isOpen('marginEur')    && <><th className={`${styles.subBefore} ${styles.marginEurHdr}`}>Before</th><th className={`${styles.subAfter} ${styles.marginEurHdr}`}>After</th><th className={`${styles.subDelta} ${styles.marginEurHdr}`}>Δ</th></>}
                   {isOpen('netMarginPct') && <><th className={`${styles.subBefore} ${styles.netMarginPctHdr}`}>Before</th><th className={`${styles.subAfter} ${styles.netMarginPctHdr}`}>After</th><th className={`${styles.subDelta} ${styles.netMarginPctHdr}`}>Δ pts</th></>}
                 </tr>
               )}
@@ -565,17 +568,18 @@ export default function ComparisonTable() {
                       return (
                         <tr key={`${zone}-${row.dataGb}`} className={styles.planRow}>
                           <td className={styles.planCell}>{row.dataGb} GB</td>
-                          <GroupCells groupKey="priceEur"     hdrClass={styles.priceHdr}        beforeVal={row.priceBeforeEur}   afterVal={row.priceAfterEur}   positiveIsGood={false} />
-                          <GroupCells groupKey="priceUsd"     hdrClass={styles.priceUsdHdr}     beforeVal={row.priceBeforeUsd}   afterVal={row.priceAfterUsd}   positiveIsGood={false} />
-                          <GroupCells groupKey="visitors"     hdrClass={styles.visitorsHdr}     beforeVal={null}                 afterVal={null}                fmt={v => v.toLocaleString('en-US')} />
-                          <GroupCells groupKey="orders"       hdrClass={styles.ordersHdr}       beforeVal={row.ordersBefore}     afterVal={row.ordersAfter}     fmt={v => v.toLocaleString('en-US')} />
-                          <GroupCells groupKey="catalogRev"   hdrClass={styles.catalogRevHdr}   beforeVal={row.catalogRevBefore} afterVal={row.catalogRevAfter} prefix="€" />
-                          <GroupCells groupKey="discount"     hdrClass={styles.discountHdr}     beforeVal={row.discountBefore}   afterVal={row.discountAfter}   prefix="€" positiveIsGood={false} />
-                          <GroupCells groupKey="grossRev"     hdrClass={styles.grossRevHdr}     beforeVal={row.grossRevBefore}   afterVal={row.grossRevAfter}   prefix="€" />
-                          <GroupCells groupKey="netRev"       hdrClass={styles.netRevHdr}       beforeVal={row.netRevBefore}     afterVal={row.netRevAfter}     prefix="€" />
-                          <GroupCells groupKey="netAov"       hdrClass={styles.netAovHdr}       beforeVal={netAovBefore}         afterVal={netAovAfter}         prefix="€" />
-                          <GroupCells groupKey="totalCost"    hdrClass={styles.totalCostHdr}    beforeVal={row.totalCostBefore}  afterVal={row.totalCostAfter}  prefix="€" positiveIsGood={false} />
-                          <GroupCells groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} beforeVal={mgnBefore}           afterVal={mgnAfter}            fmt={v => (v * 100).toFixed(1) + '%'} deltaMode="absPts" />
+                          <GroupCells groupKey="priceEur"     hdrClass={styles.priceHdr}        beforeVal={row.priceBeforeEur}                       afterVal={row.priceAfterEur}                       positiveIsGood={false} />
+                          <GroupCells groupKey="priceUsd"     hdrClass={styles.priceUsdHdr}     beforeVal={row.priceBeforeUsd}                       afterVal={row.priceAfterUsd}                       positiveIsGood={false} />
+                          <GroupCells groupKey="visitors"     hdrClass={styles.visitorsHdr}     beforeVal={null}                                     afterVal={null}                                    fmt={v => v.toLocaleString('en-US')} />
+                          <GroupCells groupKey="orders"       hdrClass={styles.ordersHdr}       beforeVal={row.ordersBefore}                         afterVal={row.ordersAfter}                         fmt={v => v.toLocaleString('en-US')} />
+                          <GroupCells groupKey="catalogRev"   hdrClass={styles.catalogRevHdr}   beforeVal={row.catalogRevBefore}                     afterVal={row.catalogRevAfter}                     prefix="€" />
+                          <GroupCells groupKey="discount"     hdrClass={styles.discountHdr}     beforeVal={row.discountBefore}                       afterVal={row.discountAfter}                       prefix="€" positiveIsGood={false} />
+                          <GroupCells groupKey="grossRev"     hdrClass={styles.grossRevHdr}     beforeVal={row.grossRevBefore}                       afterVal={row.grossRevAfter}                       prefix="€" />
+                          <GroupCells groupKey="netRev"       hdrClass={styles.netRevHdr}       beforeVal={row.netRevBefore}                         afterVal={row.netRevAfter}                         prefix="€" />
+                          <GroupCells groupKey="netAov"       hdrClass={styles.netAovHdr}       beforeVal={netAovBefore}                             afterVal={netAovAfter}                             prefix="€" />
+                          <GroupCells groupKey="totalCost"    hdrClass={styles.totalCostHdr}    beforeVal={row.totalCostBefore}                      afterVal={row.totalCostAfter}                      prefix="€" positiveIsGood={false} />
+                          <GroupCells groupKey="marginEur"    hdrClass={styles.marginEurHdr}    beforeVal={row.netRevBefore - row.totalCostBefore}   afterVal={row.netRevAfter - row.totalCostAfter}    prefix="€" />
+                          <GroupCells groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} beforeVal={mgnBefore}                               afterVal={mgnAfter}                                fmt={v => (v * 100).toFixed(1) + '%'} deltaMode="absPts" />
                         </tr>
                       );
                     })}
@@ -590,7 +594,8 @@ export default function ComparisonTable() {
                       <GroupCells groupKey="grossRev"     hdrClass={styles.grossRevHdr}    beforeVal={sumGrossRevBefore} afterVal={sumGrossRevAfter} prefix="€" />
                       <GroupCells groupKey="netRev"       hdrClass={styles.netRevHdr}      beforeVal={sumNetRevBefore}  afterVal={sumNetRevAfter}  prefix="€" />
                       <GroupCells groupKey="netAov"       hdrClass={styles.netAovHdr}      beforeVal={sumOrdersBefore > 0 ? sumNetRevBefore / sumOrdersBefore : null} afterVal={sumOrdersAfter > 0 ? sumNetRevAfter / sumOrdersAfter : null} prefix="€" />
-                      <GroupCells groupKey="totalCost"    hdrClass={styles.totalCostHdr}   beforeVal={sumCostBefore}    afterVal={sumCostAfter}    prefix="€" positiveIsGood={false} />
+                      <GroupCells groupKey="totalCost"    hdrClass={styles.totalCostHdr}    beforeVal={sumCostBefore}                       afterVal={sumCostAfter}                       prefix="€" positiveIsGood={false} />
+                      <GroupCells groupKey="marginEur"    hdrClass={styles.marginEurHdr}    beforeVal={sumNetRevBefore - sumCostBefore}      afterVal={sumNetRevAfter - sumCostAfter}      prefix="€" />
                       <GroupCells groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} beforeVal={sumNetRevBefore > 0 ? (sumNetRevBefore - sumCostBefore) / sumNetRevBefore : null} afterVal={sumNetRevAfter > 0 ? (sumNetRevAfter - sumCostAfter) / sumNetRevAfter : null} fmt={v => (v * 100).toFixed(1) + '%'} deltaMode="absPts" />
                     </tr>
                   </Fragment>
@@ -618,17 +623,18 @@ export default function ComparisonTable() {
                       return (
                         <tr key={`${zone}-${row.dataGb}`} className={styles.planRow}>
                           <td className={styles.planCell}>{row.dataGb} GB</td>
-                          <GroupCellObs groupKey="priceEur"     hdrClass={styles.priceHdr}        val={row.priceEur}   prefix="€" />
-                          <GroupCellObs groupKey="priceUsd"     hdrClass={styles.priceUsdHdr}     val={row.priceUsd}   prefix="$" />
-                          <GroupCellObs groupKey="visitors"     hdrClass={styles.visitorsHdr}     val={null}           fmtFn={v => v.toLocaleString('en-US')} />
-                          <GroupCellObs groupKey="orders"       hdrClass={styles.ordersHdr}       val={row.orders}     fmtFn={v => v.toLocaleString('en-US')} />
-                          <GroupCellObs groupKey="catalogRev"   hdrClass={styles.catalogRevHdr}   val={row.catalogRev} prefix="€" />
-                          <GroupCellObs groupKey="discount"     hdrClass={styles.discountHdr}     val={row.discount}   prefix="€" />
-                          <GroupCellObs groupKey="grossRev"     hdrClass={styles.grossRevHdr}     val={row.grossRev}   prefix="€" />
-                          <GroupCellObs groupKey="netRev"       hdrClass={styles.netRevHdr}       val={row.netRev}     prefix="€" />
-                          <GroupCellObs groupKey="netAov"       hdrClass={styles.netAovHdr}       val={netAov}         prefix="€" />
-                          <GroupCellObs groupKey="totalCost"    hdrClass={styles.totalCostHdr}    val={row.totalCost}  prefix="€" />
-                          <GroupCellObs groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} val={margin}         fmtFn={v => (v * 100).toFixed(1) + '%'} />
+                          <GroupCellObs groupKey="priceEur"     hdrClass={styles.priceHdr}        val={row.priceEur}                    prefix="€" />
+                          <GroupCellObs groupKey="priceUsd"     hdrClass={styles.priceUsdHdr}     val={row.priceUsd}                    prefix="$" />
+                          <GroupCellObs groupKey="visitors"     hdrClass={styles.visitorsHdr}     val={null}                            fmtFn={v => v.toLocaleString('en-US')} />
+                          <GroupCellObs groupKey="orders"       hdrClass={styles.ordersHdr}       val={row.orders}                      fmtFn={v => v.toLocaleString('en-US')} />
+                          <GroupCellObs groupKey="catalogRev"   hdrClass={styles.catalogRevHdr}   val={row.catalogRev}                  prefix="€" />
+                          <GroupCellObs groupKey="discount"     hdrClass={styles.discountHdr}     val={row.discount}                    prefix="€" />
+                          <GroupCellObs groupKey="grossRev"     hdrClass={styles.grossRevHdr}     val={row.grossRev}                    prefix="€" />
+                          <GroupCellObs groupKey="netRev"       hdrClass={styles.netRevHdr}       val={row.netRev}                      prefix="€" />
+                          <GroupCellObs groupKey="netAov"       hdrClass={styles.netAovHdr}       val={netAov}                          prefix="€" />
+                          <GroupCellObs groupKey="totalCost"    hdrClass={styles.totalCostHdr}    val={row.totalCost}                   prefix="€" />
+                          <GroupCellObs groupKey="marginEur"    hdrClass={styles.marginEurHdr}    val={row.netRev - row.totalCost}      prefix="€" />
+                          <GroupCellObs groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} val={margin}                          fmtFn={v => (v * 100).toFixed(1) + '%'} />
                         </tr>
                       );
                     })}
@@ -643,7 +649,8 @@ export default function ComparisonTable() {
                       <GroupCellObs groupKey="grossRev"     hdrClass={styles.grossRevHdr}    val={sumGrossRev} prefix="€" />
                       <GroupCellObs groupKey="netRev"       hdrClass={styles.netRevHdr}      val={sumNetRev}   prefix="€" />
                       <GroupCellObs groupKey="netAov"       hdrClass={styles.netAovHdr}      val={sumOrders > 0 ? sumNetRev / sumOrders : null} prefix="€" />
-                      <GroupCellObs groupKey="totalCost"    hdrClass={styles.totalCostHdr}   val={sumCost}     prefix="€" />
+                      <GroupCellObs groupKey="totalCost"    hdrClass={styles.totalCostHdr}    val={sumCost}                   prefix="€" />
+                      <GroupCellObs groupKey="marginEur"    hdrClass={styles.marginEurHdr}    val={sumNetRev - sumCost}        prefix="€" />
                       <GroupCellObs groupKey="netMarginPct" hdrClass={styles.netMarginPctHdr} val={sumNetRev > 0 ? (sumNetRev - sumCost) / sumNetRev : null} fmtFn={v => (v * 100).toFixed(1) + '%'} />
                     </tr>
                   </Fragment>
