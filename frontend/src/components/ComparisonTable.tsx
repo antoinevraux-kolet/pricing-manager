@@ -298,8 +298,10 @@ export default function ComparisonTable() {
   // ── Table controls ────────────────────────────────────────────────────────
   const [search,       setSearch]       = useState('');
   const [filterGb,     setFilterGb]     = useState('all');
+  const [topN,         setTopN]         = useState(30);
   const [collapsed,    setCollapsed]    = useState<Set<GroupKey>>(new Set(['visitors', 'catalogRev', 'discount', 'grossRev', 'netAov']));
   const [showGlossary, setShowGlossary] = useState(false);
+  const [showChart,    setShowChart]    = useState(true);
 
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -361,12 +363,13 @@ export default function ComparisonTable() {
   const obsGrouped: Record<string, OrderObservationRow[]> = {};
   for (const r of obsFiltered)  { (obsGrouped[r.zoneCode]  ??= []).push(r); }
 
-  const sortedZones = allZones
+  const allSortedZones = allZones
     .filter(z => (mode === 'comparison' ? compGrouped[z] : obsGrouped[z])?.length && matchesSearch(z))
     .sort((a, b) => mode === 'comparison'
-      ? (compGrouped[b] ?? []).reduce((s, r) => s + r.ordersAfter, 0) - (compGrouped[a] ?? []).reduce((s, r) => s + r.ordersAfter, 0)
-      : (obsGrouped[b]  ?? []).reduce((s, r) => s + r.orders,     0) - (obsGrouped[a]  ?? []).reduce((s, r) => s + r.orders,     0)
+      ? (compGrouped[b] ?? []).reduce((s, r) => s + r.netRevAfter, 0) - (compGrouped[a] ?? []).reduce((s, r) => s + r.netRevAfter, 0)
+      : (obsGrouped[b]  ?? []).reduce((s, r) => s + r.netRev,     0) - (obsGrouped[a]  ?? []).reduce((s, r) => s + r.netRev,     0)
     );
+  const sortedZones = allSortedZones.slice(0, topN);
 
   // ── GroupCells (comparison — 3 cols) ─────────────────────────────────────
   function GroupCells({ groupKey, hdrClass, beforeVal, afterVal, fmt: fmtFn, prefix = '', positiveIsGood = true, deltaMode = 'pctChange', styleVal }: {
@@ -424,8 +427,12 @@ export default function ComparisonTable() {
   const hasData   = mode === 'comparison' ? !!comp2Data  : !!obsData;
   const planCount = (mode === 'comparison' ? compFiltered : obsFiltered).length;
 
-  // ── Grand totals (all visible plans, aggregated across all countries) ─────
-  const gtComp = compFiltered.reduce((s, r) => ({
+  // ── Grand totals (filtered to topN visible zones only) ───────────────────
+  const topNZoneSet = new Set(sortedZones);
+  const compTopN = compFiltered.filter(r => topNZoneSet.has(r.zoneCode));
+  const obsTopN  = obsFiltered.filter( r => topNZoneSet.has(r.zoneCode));
+
+  const gtComp = compTopN.reduce((s, r) => ({
     ordersBefore:   s.ordersBefore   + r.ordersBefore,
     ordersAfter:    s.ordersAfter    + r.ordersAfter,
     catRevBefore:   s.catRevBefore   + r.catalogRevBefore,
@@ -440,7 +447,7 @@ export default function ComparisonTable() {
     costAfter:      s.costAfter      + r.totalCostAfter,
   }), { ordersBefore: 0, ordersAfter: 0, catRevBefore: 0, catRevAfter: 0, discBefore: 0, discAfter: 0, grossRevBefore: 0, grossRevAfter: 0, netRevBefore: 0, netRevAfter: 0, costBefore: 0, costAfter: 0 });
 
-  const gtObs = obsFiltered.reduce((s, r) => ({
+  const gtObs = obsTopN.reduce((s, r) => ({
     orders:   s.orders   + r.orders,
     catRev:   s.catRev   + r.catalogRev,
     disc:     s.disc     + r.discount,
@@ -449,9 +456,12 @@ export default function ComparisonTable() {
     cost:     s.cost     + r.totalCost,
   }), { orders: 0, catRev: 0, disc: 0, grossRev: 0, netRev: 0, cost: 0 });
 
-  const gtVisitsBefore = visitsData    ? Object.values(visitsData.before).reduce((a, b) => a + b, 0)    : null;
-  const gtVisitsAfter  = visitsData    ? Object.values(visitsData.after).reduce((a, b) => a + b, 0)     : null;
-  const gtVisitsObs    = visitsObsData ? Object.values(visitsObsData.visits).reduce((a, b) => a + b, 0) : null;
+  const gtVisitsBefore = visitsData    ? sortedZones.reduce((s, z) => s + (visitsData.before[z]        ?? 0), 0) : null;
+  const gtVisitsAfter  = visitsData    ? sortedZones.reduce((s, z) => s + (visitsData.after[z]         ?? 0), 0) : null;
+  const gtVisitsObs    = visitsObsData ? sortedZones.reduce((s, z) => s + (visitsObsData.visits[z]     ?? 0), 0) : null;
+
+  const effectiveN      = Math.min(topN, allSortedZones.length);
+  const grandTotalLabel = effectiveN >= allSortedZones.length ? 'ALL COUNTRIES' : `TOP ${effectiveN} COUNTRIES`;
 
   const [exporting, setExporting] = useState(false);
 
@@ -662,7 +672,7 @@ export default function ComparisonTable() {
           const gtNavA = gtComp.ordersAfter  > 0 ? gtComp.netRevAfter  / gtComp.ordersAfter  : null;
           const gtMeuB = gtComp.netRevBefore - gtComp.costBefore;
           const gtMeuA = gtComp.netRevAfter  - gtComp.costAfter;
-          addCRow('ALL COUNTRIES', '—', {
+          addCRow(grandTotalLabel, '—', {
             pEurB: null, pEurA: null, pUsdB: null, pUsdA: null,
             visB: gtVisitsBefore, visA: gtVisitsAfter,
             ordB: gtComp.ordersBefore, ordA: gtComp.ordersAfter,
@@ -796,7 +806,7 @@ export default function ComparisonTable() {
         // Grand total
         if (!search) {
           const gtMeu = gtObs.netRev - gtObs.cost;
-          addORow('ALL COUNTRIES', '—', {
+          addORow(grandTotalLabel, '—', {
             pEur: null, pUsd: null, vis: gtVisitsObs,
             ord: gtObs.orders, cat: gtObs.catRev, dis: gtObs.disc,
             grv: gtObs.grossRev, nrv: gtObs.netRev,
@@ -880,6 +890,59 @@ export default function ComparisonTable() {
     { key: 'netMarginPct', emoji: '📈', name: 'Margin (%)',              def: 'Net profit margin as a percentage of net revenue. In comparison mode, the delta is shown in percentage points (not % change).', calc: '(Net Revenue − COGS) ÷ Net Revenue × 100%' },
   ];
 
+  // ── Chart data (comparison mode only) ────────────────────────────────────
+  const nDays = comp2Data?.nDays ?? 1;
+
+  const zoneChartData = mode === 'comparison' ? sortedZones.map(zone => {
+    const rows = compGrouped[zone] ?? [];
+    const nrvB = rows.reduce((s, r) => s + r.netRevBefore, 0);
+    const nrvA = rows.reduce((s, r) => s + r.netRevAfter,  0);
+    const mgnB = rows.reduce((s, r) => s + (r.netRevBefore - r.totalCostBefore), 0);
+    const mgnA = rows.reduce((s, r) => s + (r.netRevAfter  - r.totalCostAfter),  0);
+    return { zone, name: zoneName(zone), revDelta: (nrvA - nrvB) / nDays, revBefore: nrvB, revAfter: nrvA, mgnBefore: mgnB, mgnAfter: mgnA };
+  }) : [];
+
+  const chartZones = [...zoneChartData]
+    .sort((a, b) => a.revDelta - b.revDelta);
+
+  const gainZones  = zoneChartData.filter(z => z.revDelta > 0).length;
+  const lossZones  = zoneChartData.filter(z => z.revDelta < 0).length;
+
+  const totalRevBefore   = zoneChartData.reduce((s, z) => s + z.revBefore, 0);
+  const totalRevAfter    = zoneChartData.reduce((s, z) => s + z.revAfter,  0);
+  const totalRevDelta    = totalRevAfter - totalRevBefore;
+  const totalRevDeltaPct = totalRevBefore !== 0 ? totalRevDelta / Math.abs(totalRevBefore) * 100 : null;
+
+  const totalMgnBefore   = zoneChartData.reduce((s, z) => s + z.mgnBefore, 0);
+  const totalMgnAfter    = zoneChartData.reduce((s, z) => s + z.mgnAfter,  0);
+  const totalMgnDelta    = totalMgnAfter - totalMgnBefore;
+  const totalMgnDeltaPct = totalMgnBefore !== 0 ? totalMgnDelta / Math.abs(totalMgnBefore) * 100 : null;
+
+  // SVG chart geometry
+  const VB_W  = 1000;
+  const LABEL_W = 180;
+  const RT_PAD  = 55;
+  const CHART_W = VB_W - LABEL_W - RT_PAD;
+  const BAR_H   = 22;
+  const BAR_GAP = 3;
+  const AXIS_H  = 32;
+  const CONTENT_H = chartZones.length * (BAR_H + BAR_GAP);
+  const VB_H  = CONTENT_H + AXIS_H;
+
+  const xMin = Math.min(0, ...chartZones.map(z => z.revDelta));
+  const xMax = Math.max(0, ...chartZones.map(z => z.revDelta));
+  const xRange = xMax - xMin || 1;
+  const toX = (v: number) => LABEL_W + ((v - xMin) / xRange) * CHART_W;
+  const zeroX = toX(0);
+
+  const rawStep = xRange / 5;
+  const mag  = Math.pow(10, Math.floor(Math.log10(Math.max(rawStep, 1))));
+  const step = Math.ceil(rawStep / mag) * mag || 1;
+  const axisTicks: number[] = [];
+  for (let t = Math.floor(xMin / step) * step; t <= xMax + step * 0.01; t += step) {
+    axisTicks.push(Math.round(t));
+  }
+
   return (
     <div>
       {/* Metrics glossary */}
@@ -960,6 +1023,18 @@ export default function ComparisonTable() {
             <option value="all">All plans</option>
             {allGbs.map(gb => <option key={gb} value={gb}>{gb} GB</option>)}
           </select>
+          <div className={styles.topNWrap}>
+            <span className={styles.topNLabel}>Top</span>
+            <input
+              type="range"
+              className={styles.topNSlider}
+              min={1}
+              max={Math.max(allSortedZones.length, 1)}
+              value={Math.min(topN, Math.max(allSortedZones.length, 1))}
+              onChange={e => setTopN(Number(e.target.value))}
+            />
+            <span className={styles.topNValue}>{Math.min(topN, allSortedZones.length)} / {allSortedZones.length} countries</span>
+          </div>
           <span className={styles.planCount}>{planCount} plans · {sortedZones.length} countries</span>
           <button className={styles.exportBtn} onClick={exportXlsx} disabled={exporting || !hasData}>
             {exporting ? 'Exporting…' : '↓ Export XLSX'}
@@ -969,6 +1044,120 @@ export default function ComparisonTable() {
 
       {isLoading && <div className={styles.loadingState}>Loading…</div>}
       {dataError && <div className={styles.errorState}>Error: {dataError}</div>}
+
+      {/* ── Comparison chart ──────────────────────────────────────────────── */}
+      {mode === 'comparison' && !isLoading && !dataError && hasData && chartZones.length > 0 && (
+        <div className={styles.chartSection}>
+          {/* KPI cards */}
+          <div className={styles.kpiRow}>
+            <div className={styles.kpiCard}>
+              <span className={styles.kpiLabel}>Countries gaining revenue</span>
+              <span className={`${styles.kpiValue} ${styles.kpiGreen}`}>{gainZones}</span>
+              <span className={styles.kpiSub}>net rev/day after &gt; before</span>
+            </div>
+            <div className={styles.kpiCard}>
+              <span className={styles.kpiLabel}>Countries losing revenue</span>
+              <span className={`${styles.kpiValue} ${styles.kpiRed}`}>{lossZones}</span>
+              <span className={styles.kpiSub}>net rev/day after &lt; before</span>
+            </div>
+            <div className={styles.kpiCard}>
+              <span className={styles.kpiLabel}>Total net revenue Δ</span>
+              <span className={`${styles.kpiValue} ${totalRevDelta >= 0 ? styles.kpiGreen : styles.kpiRed}`}>
+                {totalRevDelta >= 0 ? '+' : ''}{fmt(totalRevDelta, 0)}€
+              </span>
+              <span className={styles.kpiSub}>
+                {totalRevDeltaPct != null
+                  ? `${totalRevDeltaPct >= 0 ? '+' : ''}${totalRevDeltaPct.toFixed(1)}% vs before · ${totalRevDelta >= 0 ? '+' : ''}${fmt(totalRevDelta / nDays, 0)}€/day`
+                  : '—'}
+              </span>
+            </div>
+            <div className={styles.kpiCard}>
+              <span className={styles.kpiLabel}>Total margin Δ</span>
+              <span className={`${styles.kpiValue} ${totalMgnDelta >= 0 ? styles.kpiGreen : styles.kpiRed}`}>
+                {totalMgnDelta >= 0 ? '+' : ''}{fmt(totalMgnDelta, 0)}€
+              </span>
+              <span className={styles.kpiSub}>
+                {totalMgnDeltaPct != null
+                  ? `${totalMgnDeltaPct >= 0 ? '+' : ''}${totalMgnDeltaPct.toFixed(1)}% vs before · ${totalMgnDelta >= 0 ? '+' : ''}${fmt(totalMgnDelta / nDays, 0)}€/day`
+                  : '—'}
+              </span>
+            </div>
+          </div>
+
+          {/* Bar chart */}
+          <div className={styles.chartWrap}>
+            <button className={styles.glossaryToggle} onClick={() => setShowChart(s => !s)}>
+              <span className={styles.glossaryToggleLabel}>Revenue impact by country</span>
+              <span className={styles.glossaryArrow}>{showChart ? '▾' : '▸'}</span>
+            </button>
+            {showChart && <><div className={styles.chartMeta}>
+              <span className={styles.chartTitle}>
+                NET REVENUE/DAY CHANGE BY COUNTRY — top {chartZones.length} by net revenue
+              </span>
+              <div className={styles.chartLegend}>
+                <span className={styles.legendItem}><span className={styles.legendDotGain} />Revenue gain</span>
+                <span className={styles.legendItem}><span className={styles.legendDotLoss} />Revenue loss</span>
+              </div>
+            </div>
+            <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" style={{ display: 'block', fontFamily: 'inherit' }}>
+              {/* Alternating row bands */}
+              {chartZones.map((_, i) => (
+                <rect key={i} x={0} y={i * (BAR_H + BAR_GAP)} width={VB_W} height={BAR_H + BAR_GAP}
+                  fill={i % 2 === 0 ? '#F8FAFC' : '#FFFFFF'} />
+              ))}
+
+              {/* Zero line */}
+              <line x1={zeroX} y1={0} x2={zeroX} y2={CONTENT_H} stroke="#374151" strokeWidth={1.5} opacity={0.25} />
+
+              {/* Axis baseline */}
+              <line x1={LABEL_W} y1={CONTENT_H} x2={VB_W - RT_PAD} y2={CONTENT_H} stroke="#D1D5DB" strokeWidth={1} />
+
+              {/* Axis ticks */}
+              {axisTicks.map(t => {
+                const x = toX(t);
+                if (x < LABEL_W - 1 || x > VB_W - RT_PAD + 1) return null;
+                return (
+                  <g key={t}>
+                    <line x1={x} y1={CONTENT_H} x2={x} y2={CONTENT_H + 5} stroke="#9CA3AF" strokeWidth={1} />
+                    <text x={x} y={CONTENT_H + 20} textAnchor="middle" fontSize={11} fill="#6B7280">
+                      {t >= 0 && t !== 0 ? '+' : ''}{t.toLocaleString('en-US')}€
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* Bars + labels */}
+              {chartZones.map((z, i) => {
+                const y     = i * (BAR_H + BAR_GAP);
+                const x0    = zeroX;
+                const x1    = toX(z.revDelta);
+                const barX  = Math.min(x0, x1);
+                const barW  = Math.max(Math.abs(x1 - x0), 2);
+                const isGain = z.revDelta >= 0;
+                const labelVal = `${isGain ? '+' : ''}${fmt(z.revDelta, 0)}€`;
+                const labelX  = isGain
+                  ? Math.min(x1 + 5, VB_W - RT_PAD - 2)
+                  : Math.max(x1 - 5, LABEL_W + 2);
+
+                return (
+                  <g key={z.zone}>
+                    <text x={LABEL_W - 40} y={y + (BAR_H + BAR_GAP) / 2 + 4}
+                      textAnchor="end" fontSize={11} fill="#374151">{z.name}</text>
+                    <rect x={barX} y={y + 5} width={barW} height={BAR_H - 10}
+                      fill={isGain ? '#16A34A' : '#DC2626'} rx={2} />
+                    <text
+                      x={labelX} y={y + (BAR_H + BAR_GAP) / 2 + 4}
+                      textAnchor={isGain ? 'start' : 'end'}
+                      fontSize={10} fill={isGain ? '#15803D' : '#B91C1C'}
+                    >{labelVal}</text>
+                  </g>
+                );
+              })}
+            </svg>
+            </>}
+          </div>
+        </div>
+      )}
 
       {!isLoading && !dataError && hasData && (
         <div className={styles.tableScroll}>
@@ -1010,7 +1199,7 @@ export default function ComparisonTable() {
               {/* Grand total row — hidden when search is active */}
               {!search && mode === 'comparison' && (
                 <tr className={styles.grandTotalRow}>
-                  <td className={styles.grandTotalCell}>ALL COUNTRIES</td>
+                  <td className={styles.grandTotalCell}>{grandTotalLabel}</td>
                   {isOpen('priceEur')  ? <><td className={`${styles.grandTotalMetric} ${styles.priceHdr} ${styles.groupStartCell}`}/><td className={`${styles.grandTotalMetric} ${styles.priceHdr}`}/><td className={`${styles.grandTotalMetric} ${styles.priceHdr}`}/></> : <td className={`${styles.collapsedCell} ${styles.priceHdr} ${styles.groupStartCell}`}/>}
                   {isOpen('priceUsd')  ? <><td className={`${styles.grandTotalMetric} ${styles.priceUsdHdr} ${styles.groupStartCell}`}/><td className={`${styles.grandTotalMetric} ${styles.priceUsdHdr}`}/><td className={`${styles.grandTotalMetric} ${styles.priceUsdHdr}`}/></> : <td className={`${styles.collapsedCell} ${styles.priceUsdHdr} ${styles.groupStartCell}`}/>}
                   <GroupCells groupKey="visitors"     hdrClass={styles.visitorsHdr}    beforeVal={gtVisitsBefore}           afterVal={gtVisitsAfter}           fmt={v => v.toLocaleString('en-US')} />
@@ -1027,7 +1216,7 @@ export default function ComparisonTable() {
               )}
               {!search && mode === 'observation' && (
                 <tr className={styles.grandTotalRow}>
-                  <td className={styles.grandTotalCell}>ALL COUNTRIES</td>
+                  <td className={styles.grandTotalCell}>{grandTotalLabel}</td>
                   {isOpen('priceEur')  ? <td className={`${styles.grandTotalMetric} ${styles.priceHdr} ${styles.groupStartCell}`}/>    : <td className={`${styles.collapsedCell} ${styles.priceHdr} ${styles.groupStartCell}`}/>}
                   {isOpen('priceUsd')  ? <td className={`${styles.grandTotalMetric} ${styles.priceUsdHdr} ${styles.groupStartCell}`}/> : <td className={`${styles.collapsedCell} ${styles.priceUsdHdr} ${styles.groupStartCell}`}/>}
                   <GroupCellObs groupKey="visitors"     hdrClass={styles.visitorsHdr}    val={gtVisitsObs}   fmtFn={v => v.toLocaleString('en-US')} />
